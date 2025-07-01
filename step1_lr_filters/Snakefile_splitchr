@@ -1,0 +1,379 @@
+configfile: "./config.yaml"
+tool       = "0.MT"
+tool_short = "MT"
+ref        = config["ref"]
+
+import os, glob
+
+basedir        = "/n/data1/hms/dbmi/park/jiny/SMaHT/Tissue6/truthset/"
+input_dir      = basedir + "0.SR_calls/"   + tool + "/output/"
+processed_dir  = basedir + "1.LR_valid/"   + tool + "/intermediate"
+output_dir     = basedir + "1.LR_valid/"   + tool + "/output"
+
+processed_dir2 = basedir + "2.LR_phase/" + tool + "/intermediate"
+phasing_dir = basedir + "2.LR_phase/" + tool + "/phasing"
+final_dir = basedir + "2.LR_phase/" + tool + "/output"
+py_Filter_LR   = "/home/yoh855/jiny/SMaHT/Tissue6/truthset/workflow/scripts/LR_validation.py"
+
+vcf_files  = [f for f in os.listdir(input_dir)
+              if f.endswith("_MergedGCC.gnomADf.snv.vcf.gz") and f.startswith("MT")]
+idx_list   = [f.replace("_MergedGCC.gnomADf.snv.vcf.gz","") for f in vcf_files]
+
+all_LRbam_files = glob.glob("/n/data1/hms/dbmi/park/jiny/SMaHT/Tissue6/0.Data/All_LR_Tissue/*.bam")
+
+CHROMS = ["chr"+str(i) for i in range(1,23)] + ["chrX","chrY"]
+#CHROMS = ["chr1", "chr2", "chr3"]
+
+#CHROMS = ["chrX"]
+# ——————————————————————————————————————————————————————————————————————
+# external scripts & annotation VCFs
+# ——————————————————————————————————————————————————————————————————————
+# dbSNP build 151 (for TOPMED/COMMON flags)
+dbSNP  = "/n/data1/hms/dbmi/park/SOFTWARE/dbSNP/151/dbSnp_040924_chr.sep_byalt.vcf.gz"
+
+# your custom Python helpers
+py_bed   = "/home/yoh855/jiny/SMaHT/Tissue6/truthset/workflow/scripts/py_variant_in_bed_7.5kflank.py"
+py_dbSNP="/home/yoh855/jiny/SMaHT/Tissue6/truthset/workflow/scripts/py_gnomADandDBSNPf.py"
+py_dbSNP_common = "/home/yoh855/jiny/SMaHT/Tissue6/truthset/workflow/scripts/py_dbSNPf_common.py"
+
+# path to your Python interpreter
+python   = "/home/yoh855/miniconda3/bin/python"
+bcftools = "/n/data1/hms/dbmi/park/dominika/smaht_env/smaht_domini/bin/bcftools"
+
+rule all:
+    input:
+        # final filtered outputs
+        expand(os.path.join(processed_dir, "{idx}.{chrom}.dbSNPf.PULR1.norm.vcf.gz"),
+               idx=idx_list, chrom=CHROMS),
+        expand(os.path.join(processed_dir2,
+                              "{idx}.{chrom}.Teir1.10kflanking.snpFORphase.common.vcf.gz"),
+               idx=idx_list, chrom=CHROMS),
+        expand(os.path.join(final_dir, "{idx}.{chrom}.Teir1.s.phasingFilter.vcf"),
+        idx=idx_list, chrom=CHROMS),
+        expand(os.path.join(final_dir + "_merged", "{idx}.Teir1.s.phasingFilter.vcf.gz"),
+        idx=idx_list),
+        expand(os.path.join(final_dir + "_merged", "SD{idx}.Teir1.s.phasingFilter.SVf.vcf"),
+        idx=idx_list)
+
+
+rule split_dbSNPf_by_chr:
+    input:
+        merged = os.path.join(input_dir, "{idx}_MergedGCC.gnomADf.snv.vcf.gz")
+    output:
+        chr_ =  os.path.join(processed_dir, "{idx}.{chrom}_MergedGCC.gnomADf.snv.vcf.gz"),
+        ann = os.path.join(processed_dir, "{idx}.{chrom}.dbSNP.vcf.gz"),
+        chr_vcf = os.path.join(processed_dir, "{idx}.{chrom}.dbSNPf.vcf"),
+        chr_vcfgz = os.path.join(processed_dir, "{idx}.{chrom}.dbSNPf.vcf.gz")
+    resources:
+        runtime=120
+    params:
+        chrom = lambda wc: wc.chrom
+    shell:
+        """
+        tabix -f {input.merged}
+        {bcftools} view -r {params.chrom} {input.merged} -Oz -o {output.chr_}
+        tabix {output.chr_}
+        {bcftools} annotate -c CHROM,POS,REF,ALT,INFO/TOPMED,INFO/COMMON -a {dbSNP} {output.chr_} -o {output.ann} -O z
+        {python} {py_dbSNP} {output.ann} {output.chr_vcf}
+        bgzip -f -c {output.chr_vcf} > {output.chr_vcfgz}
+        tabix {output.chr_vcfgz}
+        """
+
+rule BCF_Pileup_LR_chr:
+    input:
+        bams = all_LRbam_files,
+        vcf  = os.path.join(processed_dir,
+                           "{idx}.{chrom}.dbSNPf.vcf.gz")
+    output:
+        vcf = os.path.join(processed_dir,
+                           "{idx}.{chrom}.dbSNPf.PULR1.vcf.gz"),
+        norm = os.path.join(processed_dir,
+                           "{idx}.{chrom}.dbSNPf.PULR1.norm.vcf.gz")
+    threads: 4
+    resources:
+        mem_mb=20000,
+        runtime=1200
+    shell:
+        """
+        {bcftools} mpileup \
+          -f {ref} --threads {threads} \
+          {input.bams} \
+          --ignore-RG \
+          -R {input.vcf} \
+          -a AD,ADF,ADR,DP,SP,SCR \
+          -d 3000 \
+          --excl-flags SECONDARY,DUP \
+          -Q 1 -q 1 -O z -o {output.vcf} 
+        tabix -f {output.vcf}
+        {bcftools} norm -m- -f {ref} -Oz -o {output.norm} {output.vcf}
+        tabix -f {output.norm}
+
+        """
+
+
+rule filter_LR:
+    input:
+        proc_vcf   = os.path.join(processed_dir, "{idx}.{chrom}.dbSNPf.vcf.gz"),
+        pileup_norm= os.path.join(processed_dir, "{idx}.{chrom}.dbSNPf.PULR1.norm.vcf.gz")
+    output:
+        filtered   = os.path.join(output_dir, "{idx}.{chrom}.dbSNPf.LR_allele_valid.vcf")
+    resources:
+        runtime=120
+    shell:
+        """
+        {python} {py_Filter_LR} \
+          {input.proc_vcf} \
+          {input.pileup_norm} \
+          {output.filtered}
+        """
+
+rule flank_hc_and_germline_by_chr:
+    input:
+        # per‐chr LR‐validated VCF
+        vcf_lr = os.path.join(output_dir,
+                              "{idx}.{chrom}.dbSNPf.LR_allele_valid.vcf"),
+        # derive the BAM path from idx
+        bam    = lambda wc: (
+            f"/n/data1/hms/dbmi/park/jiny/SMaHT/Tissue6/0.Data/All_SR/"
+            f"{wc.idx.split('_',1)[1]}_BCM_ill.bam"
+        )
+    output:
+        annot = os.path.join(processed_dir2,
+                              "{idx}.{chrom}.Teir1.10kflanking.snpFORphase.annot.vcf.gz"),
+        interval = os.path.join(processed_dir2, "{idx}.{chrom}.Teir1.10kflanking.s.m.bed"),
+    params:
+        prefix   = lambda wc: f"{wc.idx}.Teir1.10kflanking",
+        gnomad   = "/n/data1/hms/dbmi/park/SOFTWARE/gnomAD/4.1/gnomad.joint.v4.1.sites.reduced.vcf.gz",
+        dbSNP    = "/n/data1/hms/dbmi/park/SOFTWARE/dbSNP/151/dbSnp_040924_chr.sep_byalt.vcf.gz",
+        py_bed   = py_bed,
+        ref      = ref,
+        python   = python
+    threads: 4
+    resources:
+        mem_mb=30000,
+        runtime=2000
+    shell:
+        r"""
+        set -e
+
+        # 1) build 7.5kb‐flank BED *for this chromosome only*
+        python {params.py_bed} {input.vcf_lr} \
+            tmp.{params.prefix}.{wildcards.chrom}.bed
+
+        module load bedtools
+        bedtools sort -i tmp.{params.prefix}.{wildcards.chrom}.bed \
+          | bedtools merge -i - \
+          > {output.interval}
+
+        # 2) run HaplotypeCaller on the chr‐specific slopped intervals
+        module load java
+        /n/data1/hms/dbmi/park/SOFTWARE/GATK/gatk-4.6.1.0/gatk --java-options "-Xmx30g" HaplotypeCaller \
+          -R {params.ref} \
+          -I {input.bam} \
+          -L {output.interval} \
+          -O tmp.{params.prefix}.{wildcards.chrom}.hc.vcf.gz
+        tabix -f tmp.{params.prefix}.{wildcards.chrom}.hc.vcf.gz
+
+        # 3a) filter het (autosomes) or hom (X/Y)
+        if [[ "{wildcards.chrom}" =~ ^chr[1-9]$|^chr1[0-9]$|^chr2[0-2]$ ]]; then
+            {bcftools} view -v snps -g het tmp.{params.prefix}.{wildcards.chrom}.hc.vcf.gz \
+                -Oz -o tmp.{params.prefix}.{wildcards.chrom}.filtered.vcf.gz
+        else
+            {bcftools} view -v snps -g hom tmp.{params.prefix}.{wildcards.chrom}.hc.vcf.gz \
+                -Oz -o tmp.{params.prefix}.{wildcards.chrom}.filtered.vcf.gz
+        fi
+        tabix -p vcf tmp.{params.prefix}.{wildcards.chrom}.filtered.vcf.gz
+
+        # 3b) annotate with gnomAD
+        {bcftools} annotate \
+            -a {params.gnomad} \
+            -c CHROM,POS,REF,ALT,INFO/AF_grpmax_joint,INFO/AF_joint \
+            tmp.{params.prefix}.{wildcards.chrom}.filtered.vcf.gz \
+            -Oz -o tmp.{params.prefix}.{wildcards.chrom}.gnomad.vcf.gz
+        tabix -p vcf tmp.{params.prefix}.{wildcards.chrom}.gnomad.vcf.gz
+
+        # 3c) annotate that with dbSNP
+        {bcftools} annotate \
+            -a {params.dbSNP} \
+            -c CHROM,POS,REF,ALT,INFO/TOPMED,INFO/COMMON \
+            tmp.{params.prefix}.{wildcards.chrom}.gnomad.vcf.gz \
+            -Oz -o {output.annot}
+        tabix -p vcf {output.annot}
+        """
+
+
+phasing_get_pos="/home/yoh855/jiny/SMaHT/Tissue6/truthset/workflow/scripts/py_pos_for_phasing.py"
+phasing_read_stack="/home/yoh855/jiny/SMaHT/Tissue6/truthset/workflow/scripts/get_reads_for_phasing.py"
+phasing_filter="/home/yoh855/jiny/SMaHT/Tissue6/truthset/workflow/scripts/Filter_phasing4.py"
+rule phasing:
+    input:
+        annot=os.path.join(processed_dir2,
+                              "{idx}.{chrom}.Teir1.10kflanking.snpFORphase.annot.vcf.gz"),
+        vcf_raw=os.path.join(output_dir,
+                              "{idx}.{chrom}.dbSNPf.LR_allele_valid.vcf"),
+        
+        interval = os.path.join(processed_dir2, "{idx}.{chrom}.Teir1.10kflanking.s.m.bed"),
+    output:
+        common = os.path.join(processed_dir2,
+                              "{idx}.{chrom}.Teir1.10kflanking.snpFORphase.common.vcf"),
+        common_gz = os.path.join(processed_dir2,
+                              "{idx}.{chrom}.Teir1.10kflanking.snpFORphase.common.vcf.gz"),
+        germline=os.path.join(phasing_dir, "{idx}.{chrom}.Teir1.10kflanking.snpFORphase.common.ann_window.vcf"),
+        vcf_raw=os.path.join(output_dir,
+                              "{idx}.{chrom}.dbSNPf.LR_allele_valid.vcf.gz"),
+        vcf=os.path.join(phasing_dir, "{idx}.{chrom}.Teir1.sorted.ann_window.vcf"),
+        pos=os.path.join(phasing_dir, "{idx}.{chrom}.Teir1.sorted.ann_window.pos_for_phasing.txt"),
+        pos_with_cnts=os.path.join(phasing_dir, "{idx}.{chrom}.Teir1.sorted.ann_window.pos_for_phasing_Readcnts.tsv"),
+        final=os.path.join(final_dir, "{idx}.{chrom}.Teir1.s.phasingFilter.vcf")
+    params:
+        sample=lambda wildcards: wildcards.idx.split('_')[1]
+    resources:
+        mem_mb=40000,
+        runtime=3000
+    shell:
+        """
+         # 4) keep only “common” sites
+        {python} {py_dbSNP_common} {input.annot} {output.common}
+        bgzip -c {output.common} > {output.common_gz}
+        tabix -p vcf {output.common_gz}
+        #1. annotate germlinefile with the region (flanking)
+        module load bedtools
+        bedtools intersect -wb -a {output.common_gz} -b {input.interval} > {output.germline}
+        #2. annotate vcf with the region (flanking)
+        cat {input.vcf_raw} | egrep '#' > {output.vcf}
+        bgzip -f -c {input.vcf_raw} > {output.vcf_raw}
+        bedtools intersect -wb -a {output.vcf_raw} -b {input.interval} >> {output.vcf}
+        #3. Make positions for phasing
+        {python} {phasing_get_pos} {output.vcf} {output.germline}
+        #print ("pos generated for", {wildcards.idx}, {wildcards.chrom})
+        #4. Stack the reads 
+        {python} {phasing_read_stack} {params.sample} {output.pos} 
+        #5.Filter phasing
+        {python} {phasing_filter} {params.sample} {tool} {output.vcf_raw} {output.pos_with_cnts} {output.final}
+
+        """
+CHROMS_LIST  = " ".join(CHROMS)
+FIRST_CHR    = CHROMS[0]
+
+rule compress_cut_and_merge:
+    input:
+        vcfs = expand(
+            os.path.join(final_dir, "{idx}.{chrom}.Teir1.s.phasingFilter.vcf"),
+            idx="{idx}", chrom=CHROMS
+        )
+    output:
+        merged = os.path.join(final_dir + "_merged", "{idx}.Teir1.s.phasingFilter.vcf.gz")
+    resources:
+        runtime=120
+    shell:
+        r"""
+        set -euo pipefail
+        mkdir -p {final_dir}_merged
+
+        # these get filled in by Snakemake at parse time:
+        CHROMS="{CHROMS_LIST}"
+        first_chr="{FIRST_CHR}"
+        merged_unzipped={final_dir}_merged/{wildcards.idx}.Teir1.s.phasingFilter.vcf
+
+        # start empty
+        > "$merged_unzipped"
+
+        # loop over each chromosome, header only from the first,
+        # variants (fields 1–9) from all
+        for chrom in $CHROMS; do
+            vcf="{final_dir}/{wildcards.idx}.$chrom.Teir1.s.phasingFilter.vcf"
+
+            if [[ "$chrom" == "$first_chr" ]]; then
+                grep '^#'  "$vcf" | cut -f1-10 >> "$merged_unzipped"
+            fi
+
+            grep -v '^#' "$vcf" | cut -f1-10 >> "$merged_unzipped"
+        done
+        sleep 10
+        # compress & index exactly once
+        bgzip -f -c "$merged_unzipped" > {output.merged}
+        tabix -p vcf {output.merged}
+        """
+rule Pileup_Phased:
+    """
+    Take the phasing‐merged VCF (idx.Teir1.s.phasingFilter.vcf.gz),
+    pile up against all IGV/*.bam for the donor, and emit
+    idx.Teir1.s.phasingFilter.PU1.vcf  and
+    idx.Teir1.s.phasingFilter.PU1.norm.vcf
+    in the same directory.
+    """
+    input:
+        # the merged, bgzipped & tabixed phasing VCF
+        vcf = os.path.join(final_dir + "_merged", "{idx}.Teir1.s.phasingFilter.vcf.gz"),
+        # all bams for this donor
+        bams = lambda wc: sorted(
+            glob.glob(
+                f"/home/yoh855/jiny/SMaHT/Tissue6/0.Data/IGV/"
+                f"{wc.idx.split('_')[1].split('-')[0]}*.bam"
+            )
+        )
+    output:
+        pu   = os.path.join(final_dir + "_merged", "{idx}.Teir1.s.phasingFilter.PU1.vcf.gz"),
+        norm = os.path.join(final_dir + "_merged", "{idx}.Teir1.s.phasingFilter.PU1.norm.vcf.gz")
+    threads: 4
+    resources:
+        mem_mb = 10000,
+        runtime = 1200
+    shell:
+        r"""
+        set -euo pipefail
+
+        # mpileup into a one‐off uncompressed VCF
+        {bcftools} mpileup \
+            -f {ref} --threads {threads} \
+            {input.bams} \
+            --ignore-RG \
+            -R {input.vcf} \
+            -a AD,ADF,ADR,DP,SP,SCR \
+            -d 3000 \
+            --excl-flags SECONDARY,DUP \
+            -Q 1 -q 1 -Oz\
+        > {output.pu}
+
+        # normalize into another uncompressed VCF
+        {bcftools} norm \
+            -m- -f {ref} \
+            {output.pu} \
+        -o {output.norm} -Oz
+        """
+SegDup="/n/data1/hms/dbmi/park/SOFTWARE/UCSC/GRCh38_UCSC_SegDup.formatted.bed"
+Region="/home/yoh855/jiny/SMaHT/Tissue6/truthset/workflow/scripts/Regions.sh"
+sv_dir="/n/data1/hms/dbmi/park/jiny/SMaHT/Tissue6/truthset/SV_pbsv/"
+rule Regions:
+    input:
+        vcf   = os.path.join(final_dir + "_merged", "{idx}.Teir1.s.phasingFilter.vcf.gz"),
+    output:
+        vcf =  os.path.join(final_dir + "_merged", "NSD{idx}.Teir1.s.phasingFilter.vcf"),
+        vcf_svf = os.path.join(final_dir + "_merged", "NSD{idx}.Teir1.s.phasingFilter.SVf.vcf"),
+        vcf_sd =  os.path.join(final_dir + "_merged", "SD{idx}.Teir1.s.phasingFilter.vcf"),
+        vcf_sd_svf =  os.path.join(final_dir + "_merged", "SD{idx}.Teir1.s.phasingFilter.SVf.vcf"),
+    params:
+        sample=lambda wildcards: wildcards.idx.split('_')[1]
+    resources:
+        mem_mb = 5000,
+        runtime = 1200
+    shell:
+        r"""
+        module load bedtools
+
+
+        zcat {input.vcf} | egrep '#' > {output.vcf}
+        bedtools intersect -v -a {input.vcf} -b {SegDup} >> {output.vcf}
+        #Remove SV dUP
+        cat {output.vcf} | egrep '#' > {output.vcf_svf}
+        bedtools intersect -v -a {output.vcf} -b {sv_dir}pbsv_{params.sample}_all_pacbio_calls.DUP.txt >> {output.vcf_svf}
+        
+        zcat {input.vcf} | egrep '#' > {output.vcf_sd}
+        bedtools intersect -a {input.vcf} -b {SegDup} >> {output.vcf_sd}
+        #Remove SV dUP
+        cat {output.vcf_sd} | egrep '#' > {output.vcf_sd_svf}
+        bedtools intersect -v -a {output.vcf_sd} -b {sv_dir}pbsv_{params.sample}_all_pacbio_calls.DUP.txt >> {output.vcf_sd_svf}
+
+        bash {Region} {input.vcf} {final_dir}_merged/Region_{wildcards.idx}
+        bash {Region} {output.vcf_svf} {final_dir}_merged/Region_NSD_SVf{wildcards.idx}
+        """

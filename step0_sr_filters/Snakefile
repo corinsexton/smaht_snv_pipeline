@@ -1,0 +1,114 @@
+configfile:"./config.yaml"
+import os
+import glob
+
+basedir = "/n/data1/hms/dbmi/park/jiny/SMaHT/Tissue6/truthset/"
+input_dir = basedir + "input/0.MT"
+processed_dir= basedir + "0.SR_calls/0.MT/intermediate"
+final_dir = basedir + "0.SR_calls/0.MT/output"
+ref = config["ref"]
+python="/home/yoh855/miniconda3/bin/python"
+vcf_files=[vcf for vcf in os.listdir(input_dir) if vcf.endswith(".vcf.gz") ]
+idx_list=[vcf.replace(".vcf.gz", "") for vcf in vcf_files]
+
+rule all:
+    input:
+        expand("{processed_dir}/{idx}.norm.PASS.atom.vcf.gz", processed_dir=processed_dir, idx=idx_list),
+        expand("{processed_dir}/{idx}.norm.PASS.atom.dedup.vcf.gz", processed_dir=processed_dir, idx=idx_list),
+        expand("{processed_dir}/{idx}.gnomAD.vcf.gz",  processed_dir=processed_dir, idx=idx_list),
+        expand("{processed_dir}/{idx}.gnomAD.filtered.vcf.gz",  processed_dir=processed_dir, idx=idx_list),
+        expand("{final_dir}/{idx}.gnomADf.snv.vcf.gz",  final_dir=final_dir, idx=idx_list),
+
+rule Polish_vcf:
+#normalize vcf, atomize variants, and get only PASSed calls
+    input:
+        vcf=os.path.join(input_dir, "{idx}.vcf.gz")
+    output:
+        norm=os.path.join(processed_dir, "{idx}.norm.vcf.gz"),
+        passed=os.path.join(processed_dir, "{idx}.norm.PASS.vcf.gz"),
+        atom=os.path.join(processed_dir, "{idx}.norm.PASS.atom.vcf.gz"),
+    resources:
+        mem_gb=5,
+        runtime=60
+    log:
+        log="logs/0.polish_{idx}.log",
+        err="logs/0.polish_{idx}.err"
+    shell:
+        """
+        module load gcc/9.2.0 
+        module load bcftools/1.14
+        bcftools norm -m- -f {ref} {input.vcf} -o {output.norm} -O z
+        zcat {output.norm} | egrep '#|PASS' | bgzip -c  > {output.passed}
+        tabix -f {output.passed}
+        bcftools norm -a {output.passed} -o {output.atom} -O z
+        tabix -f {output.atom}
+        """
+
+py_dedup="/home/yoh855/jiny/SMaHT/Tissue6/truthset/workflow/scripts/py_dedup_atomized.py"
+rule Dedup:
+    input:
+        vcf=os.path.join(processed_dir, "{idx}.norm.PASS.atom.vcf.gz"),
+        passed=os.path.join(processed_dir, "{idx}.norm.PASS.vcf.gz")
+    output:
+        dedup=os.path.join(processed_dir, "{idx}.norm.PASS.atom.dedup.vcf.gz")
+    resources:
+        mem_gb=1,
+        runtime=60
+    log:
+        log="logs/0.polish_dedup_{idx}.log",
+        err="logs/0.polish_dedup_{idx}.err"
+    shell:
+        """
+        {python} {py_dedup} {input.passed} {input.vcf} {output.dedup}
+        """
+gnomad="/n/data1/hms/dbmi/park/SOFTWARE/gnomAD/4.1/gnomad.joint.v4.1.sites.reduced.vcf.gz"
+rule Annotate_gnomad:
+    input:
+        vcf=os.path.join(processed_dir, "{idx}.norm.PASS.atom.dedup.vcf.gz")
+    output:
+        gnomad=os.path.join(processed_dir, "{idx}.gnomAD.vcf.gz"),
+    resources:
+        mem_gb=5,
+        runtime=1200
+    log:
+        log="logs/1.gnomad_{idx}.log",
+        err="logs/1.gnomad_{idx}.err"
+    shell:
+        """
+        module load bcftools
+        tabix -f {input.vcf}
+        bcftools annotate -c CHROM,POS,REF,ALT,INFO/AF_grpmax_joint,INFO/AF_joint -a {gnomad} {input.vcf} -o {output.gnomad} -O z
+        """
+py_gnomad="/home/yoh855/jiny/SMaHT/Tissue6/truthset/workflow/scripts/py_gnomADf.py"
+rule Filter_gnomad:
+    input:
+        gnomad=os.path.join(processed_dir, "{idx}.gnomAD.vcf.gz")
+    output:
+        filtered=os.path.join(processed_dir, "{idx}.gnomAD.filtered.vcf"),
+        filteredgz=os.path.join(processed_dir, "{idx}.gnomAD.filtered.vcf.gz")
+    resources:
+        mem_mb=500,
+        runtime=60
+    shell:
+        """
+        {python} {py_gnomad} {input.gnomad} {output.filtered}
+        bgzip -f -c {output.filtered} > {output.filteredgz}
+        """
+
+rule Split:
+    input:
+        vcf=os.path.join(processed_dir, "{idx}.gnomAD.filtered.vcf.gz")
+    output:
+        snv=os.path.join(final_dir, "{idx}.gnomADf.snv.vcf.gz"),
+        ind=os.path.join(final_dir, "{idx}.gnomADf.ind.vcf.gz"),
+    resources:
+        mem_mb=500,
+        runtime=60
+    shell:
+        """
+        module load bcftools
+        bcftools view -v snps {input.vcf} -o {output.snv} -O z
+        bcftools view -v indels {input.vcf} -o {output.ind} -O z
+        tabix -f {output.snv}
+        tabix -f {output.ind}
+        """

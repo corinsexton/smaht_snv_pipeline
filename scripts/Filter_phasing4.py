@@ -10,7 +10,7 @@ f_input = sys.argv[4]
 final_output = sys.argv[5]
 
 dic_sampledepth = {"ST001-1A":255, 'ST001-1D':485, 'ST002-1D': 378,'ST002-1G': 104, 'ST003-1Q':196, 'ST004-1Q':156}
-dic_tool = {"0.MT":"MT", "2.RUFUS":"RF", "4.STK":"STK", "1.MTto":"MTto"}
+dic_tool = {"0.MF": "MF", "0.MT":"MT", "2.RUFUS":"RF", "4.STK":"STK", "1.MTto":"MTto"}
 tool_short = dic_tool[tool]
 path="/home/yoh855/jiny/SMaHT/Tissue6/truthset/2.LR_phase/"+tool+"/phasing/"
 outpath = "/home/yoh855/jiny/SMaHT/Tissue6/truthset/2.LR_phase/"+tool+'/output/'

@@ -18,17 +18,13 @@ process runVEP {
   Tuple of original VCF, split VCF file after running VEP, tabix index of that file, vep config file, a output dir, and the index type of VCF file
   */
   
-  publishDir "${params.outdir}/vep-summary",
-    pattern: "vep-${original}-${vep_config}-*.gz_summary.*",
-    mode:'move'
-
   label 'vep'
 
   input:
   tuple val(id), val(original_file), path(input), path(index), path(vep_config), val(format)
   
   output:
-  tuple val(id), val(original_file), path("${out}{.gz,}"), path("${out}{.gz,}.{tbi,csi}"), val("${vep_config}"), emit: files
+  tuple val(id), val(original_file), path("${out}{.gz,}"), path("${out}{.gz,}.{tbi,csi}"), val(vep_config), emit: files
 
   script:
   index_type = "tbi"

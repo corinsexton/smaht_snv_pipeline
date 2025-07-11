@@ -24,7 +24,7 @@ process runVEP {
   tuple val(id), val(original_file), path(input), path(index), path(vep_config), val(format)
   
   output:
-  tuple val(id), val(original_file), path("${out}{.gz,}"), path("${out}{.gz,}.{tbi,csi}"), val(vep_config), emit: files
+  tuple val(id), val(original_file), path("${out}{.gz,}"), path("${out}{.gz,}.{tbi,csi}"), emit: files
 
   script:
   index_type = "tbi"

@@ -109,12 +109,17 @@ workflow run_vep {
     //      res
     //  } |
     //  flatten |
-    //  runVEP
-
+////////
+////////    // Merge split VCF files (creates one output VCF for each input VCF)
+////////    out = runVEP.out.files
+////////            .mix(runVEPonVCF.out.files)
+////////            .groupTuple(by: [0, 1, 4])
+////////    mergeVCF(out)
+////////  emit:
+////////
     // Merge split VCF files (creates one output VCF for each input VCF)
     out = runVEPonVCF.out.files
             .groupTuple(by: [0, 1, 4])
-    out.view() 
     mergeVCF(out)
   emit:
     mergeVCF.out

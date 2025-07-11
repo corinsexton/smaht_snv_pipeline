@@ -27,7 +27,7 @@ process mergeVCF {
   cache 'lenient'
    
   input:
-  tuple val(id), val(original_file), path(vcf_files), path(index_files), file(vep_config)
+  tuple val(id), val(original_file), path(vcf_files), path(index_files)
   
   output:
   path("${merged_vcf}*")

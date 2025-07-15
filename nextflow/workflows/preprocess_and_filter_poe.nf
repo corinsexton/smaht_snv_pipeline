@@ -18,6 +18,8 @@ workflow preprocess_and_filter_poe {
         vcf_inputs
         panel_of_errors_vcf
         ref
+        segdup_regions
+        centromere_regions
 
     main: 
     // Step 1: Normalize, filter PASS, atomize
@@ -29,7 +31,7 @@ workflow preprocess_and_filter_poe {
         | preprocess_vcf
 
     // Step 2: Add POE + its index to each tuple
-    filter_panel_errors(preprocess_vcf.out,panel_of_errors_vcf.first())
+    filter_panel_errors(preprocess_vcf.out,panel_of_errors_vcf.first(),segdup_regions,centromere_regions)
 
     emit:
     filter_panel_errors.out

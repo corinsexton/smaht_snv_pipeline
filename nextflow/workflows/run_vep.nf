@@ -13,6 +13,7 @@ include { splitVCF } from '../modules/split_VCF.nf'
 include { mergeVCF } from '../modules/merge_VCF.nf'  
 include { runVEP as runVEPonVCF } from '../modules/run_vep.nf'
 include { runVEP } from '../modules/run_vep.nf'
+include { filter_vep } from '../modules/filter_vep.nf'
 
 // print usage
 if (params.help) {
@@ -121,8 +122,10 @@ workflow run_vep {
     out = runVEPonVCF.out.files
             .groupTuple(by: [0, 1, 4])
     mergeVCF(out)
+    filter_vep(mergeVCF.out)
+
   emit:
-    mergeVCF.out
+    filter_vep.out
 }
 
 //workflow NF_VEP {

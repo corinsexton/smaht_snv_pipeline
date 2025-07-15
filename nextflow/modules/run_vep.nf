@@ -47,9 +47,11 @@ process runVEP {
   vep_cmd = """
             vep --max_af -i ${input} \
             --custom file=/custom_ann/gnomad.joint.v4.1.sites.reduced.vcf.gz,short_name=gnomad4.1,format=vcf,type=exact,coords=0,fields=AF_grpmax_joint \
-            --vcf --config ${vep_config} | \
-            filter_vep -o out.vcf --force_overwrite --only_matched ${filter_arg}
+            --vcf --config ${vep_config}  -o out.vcf
             """
+            //| \
+            //filter_vep -o out.vcf --force_overwrite --only_matched ${filter_arg}
+            //"""
   }
 
   if( params.sort ) {

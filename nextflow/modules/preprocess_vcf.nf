@@ -15,7 +15,7 @@ process preprocess_vcf {
     script:
     """
 	bcftools norm --check-ref x -m- -f ${ref} ${vcf} -Ou \
-	  | bcftools view -f PASS -Oz -o ${id}.norm.PASS.vcf.gz -Wtbi
+      | bcftools view -i 'FILTER=="PASS" || INFO/FEX == "PASS"' -Oz -o ${id}.norm.PASS.vcf.gz -Wtbi
 	bcftools norm -a -Oz -o ${id}.norm.PASS.atom.vcf.gz ${id}.norm.PASS.vcf.gz -Wtbi
 	
 

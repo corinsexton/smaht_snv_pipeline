@@ -24,10 +24,13 @@ process filter_panel_errors {
 
     script:
     """
-    filter_panel_errors.py ${vcf} ${error_panel_vcf} ${id}.filtered.vcf.gz
+    # #filter_panel_errors.py ${vcf} ${error_panel_vcf} ${id}.filtered.vcf.gz
+    # ## Exclude variants in UCSC SegDup regions
+    # #bcftools view -T ^${ucsc_regions} ${id}.filtered.vcf.gz | \
+    # #    bcftools view -T ^${centromere_regions} -Oz -o filtered.vcf.gz
 
     # Exclude variants in UCSC SegDup regions
-    bcftools view -T ^${ucsc_regions} ${id}.filtered.vcf.gz | \
+    bcftools view -T ^${ucsc_regions} ${vcf} | \
         bcftools view -T ^${centromere_regions} -Oz -o filtered.vcf.gz
 
     mv filtered.vcf.gz ${id}.filtered.vcf.gz

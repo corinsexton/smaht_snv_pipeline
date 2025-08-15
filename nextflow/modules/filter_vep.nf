@@ -17,7 +17,7 @@ process filter_vep {
 
   publishDir "${params.results_dir}/vep_filtered",
     pattern: "${out_file}.gz*",
-    mode: 'move'
+    mode: 'copy'
 
   tag "$vcf.baseName"
 

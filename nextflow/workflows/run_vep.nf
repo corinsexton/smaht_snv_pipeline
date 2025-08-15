@@ -14,6 +14,7 @@ include { mergeVCF } from '../modules/merge_VCF.nf'
 include { runVEP as runVEPonVCF } from '../modules/run_vep.nf'
 include { runVEP } from '../modules/run_vep.nf'
 include { filter_vep } from '../modules/filter_vep.nf'
+include { split_snvs_indels } from '../modules/split_snvs_indels.nf'
 
 // print usage
 if (params.help) {
@@ -47,45 +48,10 @@ Parameters:
   exit 1
 }
 
-
-//def createInputChannels (input, pattern) {
-//  files = file(input)
-//  if ( !files.exists() ) {
-//    exit 1, "The specified input does not exist: ${input}"
-//  }
-//
-//  if (files.isDirectory()) {
-//    files = "${files}/${pattern}"
-//  }
-//  files = Channel.fromPath(files)
-//  
-//  return files;
-//}
-//
-//def createOutputChannel (output) {
-//  def dir = new File(output)
-//
-//  // convert output dir to absolute path if necessary
-//  if (!dir.isAbsolute()) {
-//      output = "${launchDir}/${output}";
-//  }
-//
-//  return Channel.fromPath(output)
-//}
-
 workflow run_vep {
   take:
     inputs
   main:
-    // Process input based on file extension
-    //inputs |
-    //  branch {
-    //    index: it.file =~ '\\.(tbi|csi)$'
-    //    ignore: it.file =~ '\\.(ini|registry|config)$'
-    //    vcf_with_header: checkVCFheader(it.file)
-    //    other: true
-    //  } |
-    //  set { data }
 
     // Run VEP on VCF files with header
     inputs |
@@ -97,35 +63,17 @@ workflow run_vep {
       // Run VEP for each split VCF file and for each VEP config
       map { it + [format: 'vcf'] } | runVEPonVCF
 
-    //// Run VEP on headerless VCF and non-VCF files
-    //data.other |
-    //  map {
-    //      // Split input by bin_size
-    //      files = it.file.splitText(by: params.bin_size, file: true)
-    //      res = []
-    //      for (f : files) {
-    //        // put it.file as index to avoid Nextflow errors
-    //        res += [ meta: it.meta, original: it.file, file: f, index: it.file, vep_config: it.vep_config, format: 'other' ]
-    //      }
-    //      res
-    //  } |
-    //  flatten |
-////////
-////////    // Merge split VCF files (creates one output VCF for each input VCF)
-////////    out = runVEP.out.files
-////////            .mix(runVEPonVCF.out.files)
-////////            .groupTuple(by: [0, 1, 4])
-////////    mergeVCF(out)
-////////  emit:
-////////
     // Merge split VCF files (creates one output VCF for each input VCF)
+    // COULD OPTIMIZE HERE (currently waits for all of above to finish)
     out = runVEPonVCF.out.files
             .groupTuple(by: [0, 1, 4])
     mergeVCF(out)
     filter_vep(mergeVCF.out)
 
+    split_snvs_indels(filter_vep.out)
+
   emit:
-    filter_vep.out
+    split_snvs_indels.out
 }
 
 //workflow NF_VEP {

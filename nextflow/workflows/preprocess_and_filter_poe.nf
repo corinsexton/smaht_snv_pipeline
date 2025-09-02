@@ -9,17 +9,21 @@
 nextflow.enable.dsl=2
 
 include { preprocess_vcf }       from '../modules/preprocess_vcf.nf'
-include { filter_panel_errors }  from '../modules/filter_panel_errors.nf'
+include { filter_centromere_segdups }  from '../modules/filter_centromere_segdups.nf'
+include { filter_poe }  from '../modules/filter_panel_errors.nf'
+include { filter_high_cov }  from '../modules/filter_high_cov.nf'
 
 workflow preprocess_and_filter_poe {
 
 
     take:
         vcf_inputs
-        panel_of_errors_vcf
+        bam_inputs
+        panel_of_errors_fa
         ref
         segdup_regions
         centromere_regions
+        max_depth
 
     main: 
     // Step 1: Normalize, filter PASS, atomize
@@ -30,9 +34,18 @@ workflow preprocess_and_filter_poe {
         }
         | preprocess_vcf
 
+
     // Step 2: Add POE + its index to each tuple
-    filter_panel_errors(preprocess_vcf.out,panel_of_errors_vcf.first(),segdup_regions,centromere_regions)
+    filter_centromere_segdups(preprocess_vcf.out,segdup_regions,centromere_regions)
+    filter_poe(filter_centromere_segdups.out,panel_of_errors_fa)
+
+
+   filter_poe.out 
+      .join(bam_inputs)                             // join on 'id'
+      .set { vcf_bam_channel }
+
+    filter_high_cov(vcf_bam_channel,max_depth)
 
     emit:
-    filter_panel_errors.out
+    filter_high_cov.out
 }

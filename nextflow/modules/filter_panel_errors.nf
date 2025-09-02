@@ -1,40 +1,35 @@
-process filter_panel_errors {
+process filter_poe {
 
     publishDir "${params.results_dir}/poe_filtered",
-    pattern: "${id}.filtered.vcf.gz*",
+    pattern: "${id}.pon.filtered.vcf.gz*",
     mode:'copy'
 
 
     cpus 1
-    memory '2G'
+    memory '500M'
     time '30m'
 
     tag "$id"
 
     input:
     tuple val(id), path(vcf), path(tbi)
-    tuple path(error_panel_vcf),path(error_panel_tbi)   // input index for panel
-    path ucsc_regions
-    path centromere_regions
+    tuple path(error_panel_fa),path(error_panel_fai)   // input index for panel
 
     output:
     tuple val(id),
-          path("${id}.filtered.vcf.gz"),
-          path("${id}.filtered.vcf.gz.tbi")
+          path("${id}.pon.filtered.vcf.gz"),
+          path("${id}.pon.filtered.vcf.gz.tbi")
 
     script:
     """
-    # #filter_panel_errors.py ${vcf} ${error_panel_vcf} ${id}.filtered.vcf.gz
-    # ## Exclude variants in UCSC SegDup regions
-    # #bcftools view -T ^${ucsc_regions} ${id}.filtered.vcf.gz | \
-    # #    bcftools view -T ^${centromere_regions} -Oz -o filtered.vcf.gz
+    filter_by_poe.py --vcf ${vcf} \
+                       --fasta ${error_panel_fa} \
+                       --out ${id}.pon.filtered.vcf 
+    # optional params
+    #--threads 2 --failed-out failed.vcf
 
-    # Exclude variants in UCSC SegDup regions
-    bcftools view -T ^${ucsc_regions} ${vcf} | \
-        bcftools view -T ^${centromere_regions} -Oz -o filtered.vcf.gz
-
-    mv filtered.vcf.gz ${id}.filtered.vcf.gz
-    tabix -f ${id}.filtered.vcf.gz
+    bcftools view -Ob ${id}.pon.filtered.vcf > ${id}.pon.filtered.vcf.gz
+    bcftools index ${id}.pon.filtered.vcf.gz
     """
 }
 

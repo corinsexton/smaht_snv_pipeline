@@ -18,7 +18,7 @@ process filter_poe {
     output:
     tuple val(id),
           path("${id}.pon.filtered.vcf.gz"),
-          path("${id}.pon.filtered.vcf.gz.tbi")
+          path("${id}.pon.filtered.vcf.gz.csi")
 
     script:
     """

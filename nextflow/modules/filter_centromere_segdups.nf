@@ -6,7 +6,7 @@ process filter_centromere_segdups {
 
 
     cpus 1
-    memory '2G'
+    memory '500M'
     time '30m'
 
     tag "$id"
@@ -25,7 +25,7 @@ process filter_centromere_segdups {
     """
     # Exclude variants in UCSC SegDup regions, centromeres, and >2 x avg_depth
     bcftools view -T ^${ucsc_regions} ${vcf} | \
-        bcftools view -T ^${centromere_regions} -Oz -o filtered.vcf.gz
+        bcftools view -T ^${centromere_regions} -Ob -o filtered.vcf.gz
 
     mv filtered.vcf.gz ${id}.filtered.vcf.gz
     tabix -f ${id}.filtered.vcf.gz

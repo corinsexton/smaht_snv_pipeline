@@ -53,89 +53,27 @@ workflow run_vep {
     inputs
   main:
 
-    // Run VEP on VCF files with header
-    inputs |
-      checkVCF |
-      // Generate split files that each contain bin_size number of variants
-      generateSplits | transpose |
-      // Split VCF using split files
-      splitVCF | transpose |
-      // Run VEP for each split VCF file and for each VEP config
-      map { it + [format: 'vcf'] } | runVEPonVCF
 
-    // Merge split VCF files (creates one output VCF for each input VCF)
-    // COULD OPTIMIZE HERE (currently waits for all of above to finish)
-    out = runVEPonVCF.out.files
-            .groupTuple(by: [0, 1, 4])
-    mergeVCF(out)
-    filter_vep(mergeVCF.out)
+    runVEPonVCF(inputs)
+    //// Run VEP on VCF files with header
+    //inputs |
+    //  checkVCF |
+    //  // Generate split files that each contain bin_size number of variants
+    //  generateSplits | transpose |
+    //  // Split VCF using split files
+    //  splitVCF | transpose |
+    //  // Run VEP for each split VCF file and for each VEP config
+    //  map { it + [format: 'vcf'] } | runVEPonVCF
+
+    //// Merge split VCF files (creates one output VCF for each input VCF)
+    //// COULD OPTIMIZE HERE (currently waits for all of above to finish)
+    //out = runVEPonVCF.out.files
+    //        .groupTuple(by: [0, 1, 4])
+    //mergeVCF(out)
+    filter_vep(runVEPonVCF.out)
 
     split_snvs_indels(filter_vep.out)
 
   emit:
-    split_snvs_indels.out
+    split_snvs_indels.out.snvs
 }
-
-//workflow NF_VEP {
-//  if (!params.input) {
-//    exit 1, "Undefined --input parameter. Please provide the path to an input file."
-//  }
-//
-//  if (params.vcf) {
-//    log.warn "The --vcf parameter is deprecated in Nextflow VEP. Please use --input instead."
-//  }
-//
-//  if (!params.vep_config) {
-//    exit 1, "Undefined --vep_config parameter. Please provide a VEP config file."
-//  }
-//
-//  //input = createInputChannels(params.input, pattern="*")
-//
-//  //input.count()
-//  //  .combine( vep_config.count() )
-//  //  .subscribe{ if ( it[0] != 1 && it[1] != 1 ) 
-//  //    exit 1, "Detected many-to-many scenario between VCF and VEP config files - currently not supported" 
-//  //  }
-//    
-//  // set if it is a one-to-many situation (single VCF and multiple ini file)
-//  // in this situation we produce output files with different names
-//  one_to_many = input.count()
-//    .combine( vep_config.count() )
-//    .map{ it[0] == 1 && it[1] != 1 }
-//
-//  //output_dir = createOutputChannel(params.outdir)
-//  
-//  //filters = Channel.of(params.filters)
-//
-//  
-//  vep_config = createInputChannels(params.vep_config, pattern="*.ini")
-//
-//
-//  
-//  input
-//    .combine( vep_config )
-//    .combine( one_to_many )
-//    .combine( output_dir )
-//    .combine( filters )
-//    .map {
-//      data, vep_config, one_to_many, output_dir, filters ->
-//        meta = [:]
-//        meta.one_to_many = one_to_many
-//        meta.output_dir = output_dir
-//        meta.filters = filters
-//        
-//        // NOTE: csi is default unless a tbi index already exists
-//        meta.index_type = file(data + ".tbi").exists() ? "tbi" : "csi"
-//
-//        index = data + ".${meta.index_type}"
-//
-//        [ meta: meta, file: data, index: index, vep_config: vep_config ]
-//    }
-//    .set{ ch_input }
-//  
-//  vep(ch_input)
-//}
-
-//workflow {
-//  NF_VEP()
-//}

@@ -18,7 +18,6 @@ workflow preprocess_and_filter_poe {
 
     take:
         vcf_inputs
-        bam_inputs
         panel_of_errors_fa
         ref
         segdup_regions
@@ -40,12 +39,6 @@ workflow preprocess_and_filter_poe {
     filter_poe(filter_centromere_segdups.out,panel_of_errors_fa)
 
 
-   filter_poe.out 
-      .join(bam_inputs)                             // join on 'id'
-      .set { vcf_bam_channel }
-
-    filter_high_cov(vcf_bam_channel,max_depth)
-
     emit:
-    filter_high_cov.out
+    filter_poe.out
 }

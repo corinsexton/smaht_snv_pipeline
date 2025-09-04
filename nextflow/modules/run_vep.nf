@@ -21,38 +21,22 @@ process runVEP {
   label 'vep'
 
   input:
-  tuple val(id), val(original_file), path(input), path(index), path(vep_config), val(format)
+  tuple val(id), val(original_file), path(index), path(vep_config)
   
   output:
-  tuple val(id), val(original_file), path("${out}{.gz,}"), path("${out}{.gz,}.{tbi,csi}"), emit: files
+  tuple val(id), path("${out}{.gz,}"), path("${out}{.gz,}.{tbi,csi}"), emit: files
 
   script:
   index_type = "tbi"
-  out = "vep" + "-" + file(original_file).getSimpleName() + "-" + vep_config.getSimpleName() + "-" + input.getName().replace(".gz", "")
+  out = file(original_file).getSimpleName() + "_VEP.vcf"
   tabix_arg = index_type == 'tbi' ? '' : '-C'
   
-  if( !input.exists() ) {
-    exit 1, "Missing input: ${input}"
-
-  }
-  else if ( format == 'vcf' && !index.exists() ){
-    exit 1, "VCF index file is not generated: ${index}"
-  }
-  else {
-  def filters = "AF < 0.001,..."
-  def filter_arg = ""
-  for (filter in filters) {
-    filter_arg = filter_arg + "-filter \"" + filter + "\" "
-  }
   vep_cmd = """
-            vep --max_af -i ${input} \
+            vep --max_af -i ${original_file} \
             --custom file=/custom_ann/gnomad.joint.v4.1.sites.reduced.vcf.gz,short_name=gnomad4.1,format=vcf,type=exact,coords=0,fields=AF_grpmax_joint \
             --vcf --config ${vep_config}  -o out.vcf
             """
-            //| \
-            //filter_vep -o out.vcf --force_overwrite --only_matched ${filter_arg}
-            //"""
-  }
+  
 
   if( params.sort ) {
     sort_cmd = "(head -1000 out.vcf | grep '^#'; grep -v '^#' out.vcf | sort -k1,1d -k2,2n) > ${out}"

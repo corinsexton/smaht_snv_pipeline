@@ -13,4 +13,5 @@
 nextflow run main.nf -resume \
   --bin_size 10000 \
   --vep_config vep.ini \
-  --results_dir ./new_results
+  --input_csv 300x_files_w_bams.csv \
+  --results_dir ./300x_results

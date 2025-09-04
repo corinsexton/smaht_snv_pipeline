@@ -22,10 +22,10 @@ process filter_vep {
   tag "$vcf.baseName"
 
   input:
-    tuple(path(vcf), path(vcf_index))
+    tuple(val(id), path(vcf), path(vcf_index))
 
   output:
-    tuple( path("${out_file}.gz"), path("${out_file}.gz.tbi"))
+    tuple( val(id), path("${out_file}.gz"), path("${out_file}.gz.tbi"))
 
 
   script:

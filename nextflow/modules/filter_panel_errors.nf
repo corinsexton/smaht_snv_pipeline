@@ -5,6 +5,7 @@ process filter_poe {
     mode:'copy'
 
 
+    cache 'lenient'
     cpus 1
     memory '500M'
     time '30m'
@@ -18,7 +19,7 @@ process filter_poe {
     output:
     tuple val(id),
           path("${id}.pon.filtered.vcf.gz"),
-          path("${id}.pon.filtered.vcf.gz.csi")
+          path("${id}.pon.filtered.vcf.gz.tbi")
 
     script:
     """
@@ -28,8 +29,8 @@ process filter_poe {
     # optional params
     #--threads 2 --failed-out failed.vcf
 
-    bcftools view -Ob ${id}.pon.filtered.vcf > ${id}.pon.filtered.vcf.gz
-    bcftools index ${id}.pon.filtered.vcf.gz
+    bcftools view -Oz ${id}.pon.filtered.vcf > ${id}.pon.filtered.vcf.gz
+    tabix ${id}.pon.filtered.vcf.gz
     """
 }
 

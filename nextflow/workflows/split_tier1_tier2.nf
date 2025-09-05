@@ -2,6 +2,7 @@ nextflow.enable.dsl=2
 
 include { filter_run_minipileup }       from '../modules/filter_run_minipileup.nf'
 include { tier_variants }       from '../modules/tier_variants.nf'
+include { filter_binom_fisher }       from '../modules/filter_binom_fisher.nf'
 
 workflow split_tier1_tier2 {
 
@@ -22,6 +23,8 @@ workflow split_tier1_tier2 {
     filter_run_minipileup(vcf_bam_channel,ref_input)
 
     tier_variants(filter_run_minipileup.out)
+
+    filter_binom_fisher(tier_variants.out)
 
     //    // input: tuple val(id), path(vcf), path(tbi), path("${id}.minipileup.vcf")
     //    // output: tuple val(id), path(vcf), path(tbi), path("${id}.minipileup.vcf")

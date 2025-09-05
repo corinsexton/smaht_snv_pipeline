@@ -1,7 +1,7 @@
 process tier_variants {
 
     publishDir "${params.results_dir}/tiered_variants",
-    pattern: "${id}.tiered.vcf",
+    pattern: "${id}.tiered.vcf.gz*",
     mode:'copy'
 
     publishDir "${params.results_dir}/minipileup/parsed",
@@ -20,7 +20,7 @@ process tier_variants {
           path(minipileup_vcf)
 
     output:
-    tuple val(id), path("${id}.tiered.vcf")
+    tuple val(id), path("${id}.tiered.vcf.gz"), path("${id}.tiered.vcf.gz.tbi")
 
     script:
     """
@@ -32,5 +32,7 @@ process tier_variants {
 
     # assigns tiers based on LR ≥ 1 (TIER1), LR = 0 & SR ≥ 2 (TIER2), else (.)
     split_lr_presence.py ${id}.parsed.minipileup.tsv ${id}.tiered.vcf
+    bgzip ${id}.tiered.vcf
+    tabix ${id}.tiered.vcf.gz
     """
 }

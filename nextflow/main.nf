@@ -97,8 +97,8 @@ workflow {
     vep_config = Channel.fromPath(params.vep_config)
     filtered.combine( vep_config )
                         .map {
-                              id, vcf, tbi, config ->
-                               [id: id, file: vcf, index: tbi, vep_config: config]
+                              id, vcf, truth_vcf, truth_tbi, tbi, config ->
+                               [id: id, file: vcf, truth_vcf:truth_vcf, truth_tbi:truth_tbi, index: tbi, vep_config: config]
                              }
                         .set {vep_input}
 

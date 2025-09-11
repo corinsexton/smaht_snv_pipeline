@@ -72,7 +72,7 @@ workflow run_vep {
     //mergeVCF(out)
     filter_vep(runVEPonVCF.out)
 
-    split_snvs_indels(filter_vep.out)
+    split_snvs_indels(filter_vep.out.vcf)
 
   emit:
     split_snvs_indels.out.snvs

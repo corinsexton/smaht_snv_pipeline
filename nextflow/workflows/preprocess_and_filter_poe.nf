@@ -28,17 +28,17 @@ workflow preprocess_and_filter_poe {
     // Step 1: Normalize, filter PASS, atomize
     // Assumes: preprocess_vcf emits (id, processed_vcf, processed_vcf.tbi)
     vcf_inputs
-        .map { id, vcf, tbi ->
-            tuple(id, vcf, tbi, ref)
+        .map { id, vcf, tbi, truth, truth_tbi ->
+            tuple(id, vcf, tbi, ref, truth, truth_tbi)
         }
         | preprocess_vcf
 
 
     // Step 2: Add POE + its index to each tuple
-    filter_centromere_segdups(preprocess_vcf.out,segdup_regions,centromere_regions)
-    filter_poe(filter_centromere_segdups.out,panel_of_errors_fa)
+    filter_centromere_segdups(preprocess_vcf.out.vcf,segdup_regions,centromere_regions)
+    filter_poe(filter_centromere_segdups.out.vcf,panel_of_errors_fa)
 
 
     emit:
-    filter_poe.out
+    filter_poe.out.vcf
 }

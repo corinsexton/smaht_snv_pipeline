@@ -71,11 +71,21 @@ def input_bams = Channel
         tuple(id,bam,bai,lr_bam,lr_bai)
     }
 
+def truth_ch = Channel
+    .fromPath(params.input_csv)
+    .splitCsv(header: true)
+    .map{ row ->
+        def id = row.id
+        def truth_vcf = row.truth_vcf ? file(row.truth_vcf) : ""
+        def truth_tbi = row.truth_vcf ? file(row.truth_vcf + '.tbi') : "" 
+        tuple(id, truth_vcf, truth_tbi)
+    }
+
 workflow {
 
     // remove first filters
     filtered = preprocess_and_filter_poe(
-        input_vcfs,
+        input_vcfs.join(truth_ch),
         poe_input,
         params.ref,
         params.segdup_regions,

@@ -11,7 +11,11 @@
 
 
 nextflow run main.nf -resume \
-  --bin_size 10000 \
   --vep_config vep.ini \
-  --input_csv 300x_files_w_bams.csv \
-  --results_dir ./300x_results
+  --input_csv truth_tests2.csv \
+  --results_dir ./truthset_results
+
+#nextflow run main.nf -resume \
+#  --vep_config vep.ini \
+#  --input_csv production_donors.csv \
+#  --results_dir ./production_results

@@ -76,8 +76,8 @@ def truth_ch = Channel
     .splitCsv(header: true)
     .map{ row ->
         def id = row.id
-        def truth_vcf = row.truth_vcf ? file(row.truth_vcf) : ""
-        def truth_tbi = row.truth_vcf ? file(row.truth_vcf + '.tbi') : "" 
+        def truth_vcf = row.truth_vcf ? file(row.truth_vcf) : file("none.vcf")
+        def truth_tbi = row.truth_vcf ? file(row.truth_vcf + '.tbi') : file("none.vcf.tbi")
         tuple(id, truth_vcf, truth_tbi)
     }
 
@@ -97,8 +97,8 @@ workflow {
     vep_config = Channel.fromPath(params.vep_config)
     filtered.combine( vep_config )
                         .map {
-                              id, vcf, truth_vcf, truth_tbi, tbi, config ->
-                               [id: id, file: vcf, truth_vcf:truth_vcf, truth_tbi:truth_tbi, index: tbi, vep_config: config]
+                              id, vcf, tbi, truth_vcf, truth_tbi, config ->
+                               [id: id, file: vcf, index: tbi, truth_vcf:truth_vcf, truth_tbi:truth_tbi, vep_config: config]
                              }
                         .set {vep_input}
 
@@ -106,7 +106,7 @@ workflow {
     vep_snvs_out = run_vep(vep_input) // output: id, snv_vcf, snv_tbi
 
     // run pileup and split based on LR presence (tier1) / absence (tier2)
-    tier_split_output = split_tier1_tier2(vep_snvs_out, input_bams, ref_input)
+    tier_split_output = split_tier1_tier2(vep_snvs_out.join(truth_ch), input_bams, ref_input)
 
 
     // run last filters based on tier1 or tier2

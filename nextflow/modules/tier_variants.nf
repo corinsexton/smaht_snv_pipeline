@@ -17,10 +17,11 @@ process tier_variants {
     input:
     tuple val(id), 
           path(vcf), path(tbi),
+          path(truth_vcf), path(truth_vcf_tbi),
           path(minipileup_vcf)
 
     output:
-    tuple val(id), path("${id}.tiered.vcf.gz"), path("${id}.tiered.vcf.gz.tbi")
+    tuple val(id), path("${id}.tiered.vcf.gz"), path("${id}.tiered.vcf.gz.tbi"),path(truth_vcf), path(truth_vcf_tbi)
 
     script:
     """

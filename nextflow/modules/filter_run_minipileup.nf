@@ -13,6 +13,7 @@ process filter_run_minipileup {
 
     input:
     tuple val(id), path(vcf), path(tbi), 
+        path(truth_vcf), path(truth_vcf_tbi),
         path(bam), path(bai), 
         path(lr_bam), path(lr_bai)
     tuple path(ref), path(ref_index)
@@ -20,7 +21,7 @@ process filter_run_minipileup {
 
     output:
     tuple val(id),
-          path(vcf), path(tbi),
+          path(vcf), path(tbi), path(truth_vcf), path(truth_vcf_tbi),
           path("${id}.minipileup.vcf")
 
     script:

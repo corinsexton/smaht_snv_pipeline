@@ -27,6 +27,7 @@ process split_snvs_indels {
   output:
     tuple val(id), path("snvs_${vcf.baseName}.gz"), path("snvs_${vcf.baseName}.gz.tbi"), emit: snvs
     tuple val(id), path("indels_${vcf.baseName}.gz"), path("indels_${vcf.baseName}.gz.tbi"), emit: indels
+    path "${id}.snv_only.metrics.tsv", emit: metrics
 
   script:
     """

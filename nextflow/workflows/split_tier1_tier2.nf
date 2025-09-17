@@ -15,8 +15,8 @@ workflow split_tier1_tier2 {
     // Step 1: run minipileup to get counts in SR and LR
     vcf_inputs
       .join(bam_inputs)     // join on 'id'
-      .map { id, vcf, tbi, bam, bai, lr_bam, lr_bai ->
-        tuple(id, vcf, tbi, bam, bai, lr_bam, lr_bai)
+      .map { id, vcf, tbi, truth_vcf, truth_vcf_tbi, bam, bai, lr_bam, lr_bai ->
+        tuple(id, vcf, tbi, truth_vcf, truth_vcf_tbi, bam, bai, lr_bam, lr_bai)
       }
       .set { vcf_bam_channel }
 

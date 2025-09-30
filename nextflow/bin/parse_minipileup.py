@@ -92,6 +92,9 @@ def main():
     ap.add_argument("original_vcf", help="Original SNV VCF (bgzipped/indexed recommended)")
     ap.add_argument("derived_vcf", help="Derived VCF from minipileup (with ADF/ADR). Can be bgzipped or plain; index optional.")
     ap.add_argument("out_tsv", help="Output TSV path")
+    ap.add_argument("--labels", required=True,
+                    help="Comma-separated labels matching samples in derived VCF, in order. "
+                         "Example: SR,SR,LR,LR,ONT,ONT")
     args = ap.parse_args()
 
     targets, pos_set = load_targets_from_original(args.original_vcf)
@@ -101,21 +104,29 @@ def main():
     with pysam.VariantFile(args.derived_vcf) as dvf:
         sample_names = list(dvf.header.samples)
 
+    labels = args.labels.split(",")
+    if len(labels) != len(sample_names):
+        sys.stderr.write(f"ERROR: {len(sample_names)} samples in VCF but {len(labels)} labels provided.\n")
+        sys.exit(1)
+
+    sample_to_label = dict(zip(sample_names, labels))
+    label_set = list(dict.fromkeys(labels))  # unique labels, preserve order
+
     derived_by_pos = index_derived_by_position(args.derived_vcf, pos_set)
 
     # Prepare header
     base_cols = ["chrom", "pos", "ref", "alt"]
-    per_sample_cols = []
-    for s in sample_names:
-        per_sample_cols.extend([
-            f"{s}__ref_ADF",
-            f"{s}__ref_ADR",
-            f"{s}__alt_ADF",
-            f"{s}__alt_ADR",
+    per_label_cols = []
+    for lab in label_set:
+        per_label_cols.extend([
+            f"{lab}__ref_ADF",
+            f"{lab}__ref_ADR",
+            f"{lab}__alt_ADF",
+            f"{lab}__alt_ADR",
         ])
 
     with open(args.out_tsv, "w") as out:
-        out.write("\t".join(base_cols + per_sample_cols) + "\n")
+        out.write("\t".join(base_cols + per_label_cols) + "\n")
 
         for chrom, pos, ref_base, alt_base in targets:
             records = derived_by_pos.get((chrom, pos), [])
@@ -138,37 +149,46 @@ def main():
             # If we still have no record, all sample columns become NA
             row = [chrom, str(pos), ref_base, alt_base]
 
-            if chosen is None:
-                # No derived record at this site at all
-                for _ in sample_names:
-                    row.extend([NA, NA, NA, NA])
-                out.write("\t".join(row) + "\n")
-                continue
+            # initialise accumulators
+            agg = {lab: {"ref_ADF": 0, "ref_ADR": 0, "alt_ADF": 0, "alt_ADR": 0}
+                   for lab in label_set}
 
             # For REF we always use index 0; for ALT we use alt_idx (may be None)
-            # Build per-sample values
-            for s in sample_names:
-                call = chosen.samples.get(s, None)
-                if call is None:
-                    row.extend([NA, NA, NA, NA])
-                    continue
-                adf = get_numberR(call, "ADF")
-                adr = get_numberR(call, "ADR")
+            if chosen is not None:
+                for s in sample_names:
+                    call = chosen.samples.get(s, None)
+                    lab = sample_to_label[s]
+                    if call is None:
+                        continue
+                    adf = get_numberR(call, "ADF")
+                    adr = get_numberR(call, "ADR")
 
-                def get_idx(arr, idx):
-                    if arr is None or idx is None:
-                        return NA
-                    try:
-                        return str(arr[idx])
-                    except Exception:
-                        return NA
+                    def safe_val(arr, idx):
+                        if arr is None or idx is None:
+                            return None
+                        try:
+                            return arr[idx]
+                        except Exception:
+                            return None
 
-                ref_adf = get_idx(adf, 0)
-                ref_adr = get_idx(adr, 0)
-                alt_adf = get_idx(adf, alt_idx)
-                alt_adr = get_idx(adr, alt_idx)
+                    ref_adf = safe_val(adf, 0)
+                    ref_adr = safe_val(adr, 0)
+                    alt_adf = safe_val(adf, alt_idx)
+                    alt_adr = safe_val(adr, alt_idx)
 
-                row.extend([ref_adf, ref_adr, alt_adf, alt_adr])
+                    if ref_adf is not None: agg[lab]["ref_ADF"] += ref_adf
+                    if ref_adr is not None: agg[lab]["ref_ADR"] += ref_adr
+                    if alt_adf is not None: agg[lab]["alt_ADF"] += alt_adf
+                    if alt_adr is not None: agg[lab]["alt_ADR"] += alt_adr
+
+            # fill row with aggregated values
+            for lab in label_set:
+                row.extend([
+                    str(agg[lab]["ref_ADF"]),
+                    str(agg[lab]["ref_ADR"]),
+                    str(agg[lab]["alt_ADF"]),
+                    str(agg[lab]["alt_ADR"]),
+                ])
 
             out.write("\t".join(row) + "\n")
 

@@ -16,8 +16,10 @@ params.panel_of_errors_index  = "/n/data1/hms/dbmi/park/corinne/smaht/test_bench
 params.results_dir     = "./new_results"
 params.ref             = "/n/data1/hms/dbmi/park-smaht_dac/ref/GRCh38_no_alt/hg38_no_alt.fa"
 params.ref_index             = "/n/data1/hms/dbmi/park-smaht_dac/ref/GRCh38_no_alt/hg38_no_alt.fa.fai"
-params.segdup_regions = "/n/data1/hms/dbmi/park/SOFTWARE/UCSC/GRCh38_UCSC_SegDup.formatted.bed"
-params.centromere_regions = "/home/cos689/smaht/test_benchmarking/smaht_snv_pipeline/nextflow/centromere.bed"
+//params.segdup_regions = "/n/data1/hms/dbmi/park/SOFTWARE/UCSC/GRCh38_UCSC_SegDup.formatted.bed"
+params.segdup_regions = "/home/cos689/smaht/test_benchmarking/smaht_snv_pipeline/nextflow/segdup_grch38_official.bed.gz"
+//params.centromere_regions = "/home/cos689/smaht/test_benchmarking/smaht_snv_pipeline/nextflow/centromere.bed"
+params.centromere_regions = "/home/cos689/smaht/test_benchmarking/smaht_snv_pipeline/nextflow/centromeres_GRCh38_official.bed.gz"
 params.max_depth = 300
 
 def ensureTabixIndex(vcf_path) {
@@ -49,6 +51,41 @@ def ref_fa = file(params.ref)
 def ref_fai = file(params.ref_index)
 def ref_input = tuple(ref_fa, ref_fai)
 
+
+// ---------- helper to parse cram/crai CSV ----------
+def parse_cram_csv(csv_path) {
+    Channel
+        .fromPath(csv_path)
+        .splitCsv(header: true)
+        .map { row ->
+            def id = row.id
+            def fields = row.values().drop(1)
+            if (fields.size() % 2 != 0) {
+                throw new IllegalArgumentException("Row for ${id} has an odd number of cram/crai entries")
+            }
+            def crams = (0..<fields.size()/2).collect { i -> file(fields[2*i].trim()) }
+            def crais = (0..<fields.size()/2).collect { i -> file(fields[2*i+1].trim()) }
+            tuple(id, crams, crais)
+        }
+}
+
+def input_sr  = parse_cram_csv(params.shortread_csv)
+def input_lr  = params.longread_csv ? parse_cram_csv(params.longread_csv) : Channel.empty()
+def input_ont = params.ont_csv      ? parse_cram_csv(params.ont_csv) : Channel.empty()
+
+// ---------- merge all by sample ID ----------
+def input_bams = input_sr
+    .join(input_lr)
+    .join(input_ont)
+    .map { id, sr_crams, sr_crais, lr_crams, lr_crais, ont_crams, ont_crais ->
+            if( !sr_crams || sr_crams.size() == 0 ) {
+            throw new IllegalArgumentException("Sample ${id} has no short-read CRAMs — at least one required")
+            }
+
+        tuple(id, sr_crams, sr_crais, lr_crams, lr_crais, ont_crams, ont_crais)
+    }
+
+/////
 def input_vcfs = Channel
     .fromPath(params.input_csv)
     .splitCsv(header: true)
@@ -59,17 +96,17 @@ def input_vcfs = Channel
         tuple(id, vcf, tbi)
     }
 
-def input_bams = Channel
-    .fromPath(params.input_csv)
-    .splitCsv(header: true)
-    .map { row ->
-        def id = row.id
-        def bam = file(row.bam)
-        def bai = file(row.bai)
-        def lr_bam = file(row.lr_bam)
-        def lr_bai = file(row.lr_bai)
-        tuple(id,bam,bai,lr_bam,lr_bai)
-    }
+//def input_bams = Channel
+//    .fromPath(params.input_csv)
+//    .splitCsv(header: true)
+//    .map { row ->
+//        def id = row.id
+//        def bam = file(row.bam)
+//        def bai = file(row.bai)
+//        def lr_bam = file(row.lr_bam)
+//        def lr_bai = file(row.lr_bai)
+//        tuple(id,bam,bai,lr_bam,lr_bai)
+//    }
 
 def truth_ch = Channel
     .fromPath(params.input_csv)

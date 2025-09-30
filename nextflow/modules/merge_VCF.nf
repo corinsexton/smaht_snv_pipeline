@@ -30,7 +30,7 @@ process mergeVCF {
   tuple val(id), val(original_file), path(vcf_files), path(index_files)
   
   output:
-  tuple(path("${merged_vcf}"),path("${merged_vcf}.tbi"))
+  tuple val(id), path("${merged_vcf}"),path("${merged_vcf}.tbi")
 
   script:
 

@@ -10,12 +10,18 @@
 #SBATCH -o slurm-%x.%j.out
 
 
-nextflow run main.nf -resume \
+nextflow run main.nf  \
   --vep_config vep.ini \
-  --input_csv truth_tests2.csv \
-  --results_dir ./truthset_results
+  --longread_csv truth_sets_lr.csv \
+  --ont_csv truth_sets_ont.csv \
+  --shortread_csv truth_sets_sr.csv \
+  --input_csv truth_sets_small.csv \
+  --results_dir ./truthset_new_ref_files
 
 #nextflow run main.nf -resume \
 #  --vep_config vep.ini \
-#  --input_csv production_donors.csv \
-#  --results_dir ./production_results
+#  --longread_csv production_donors_lr.csv \
+#  --ont_csv production_donors_ont.csv \
+#  --shortread_csv production_donors_sr.csv \
+#  --input_csv production_donors_small.csv \
+#  --results_dir ./production_nosr_vaf_results

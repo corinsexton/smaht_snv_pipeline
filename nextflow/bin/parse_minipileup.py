@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-# extract_strand_counts_wide.py
+# parse_minipileup.py
 #
 # Usage:
-#   ./extract_strand_counts_wide.py original.vcf.gz derived.vcf[.gz] output.tsv
+#   ./parse_minipileup.py original.vcf.gz derived.vcf[.gz] output.tsv --labels SR,SR,LR,LR,ONT,ONT
 #
 # Requirements:
 #   pip install pysam
 #
 # Notes:
 # - original VCF: SNVs only (single REF/ALT base)
-# - derived VCF: FORMAT has GT, ADF, ADR; may be multi-allelic; allele strings
-#   can be >1 base (e.g., "AN", "GN"). For ALT mapping we use the *first base*.
-# - Output: one row per site; columns per sample:
-#     <sample>__ref_ADF, <sample>__ref_ADR, <sample>__alt_ADF, <sample>__alt_ADR
+# - derived VCF: FORMAT has GT, ADF, ADR; may be multi-allelic
+# - Output: one row per site; columns per label:
+#     <label>__ref_ADF, <label>__ref_ADR, <label>__alt_ADF, <label>__alt_ADR
+# - "ref" counts = sum of all alleles that are *not* the mosaic ALT
 
 import sys
 import argparse
@@ -131,7 +131,6 @@ def main():
         for chrom, pos, ref_base, alt_base in targets:
             records = derived_by_pos.get((chrom, pos), [])
 
-            # Pick a record at this position whose ALT set contains our original ALT (by first base).
             chosen = None
             alt_idx = None
             if records:
@@ -145,15 +144,13 @@ def main():
                 if chosen is None:
                     chosen = records[0]
                     alleles = [chosen.ref] + list(chosen.alts or [])
-                    alt_idx = choose_alt_index(alleles, alt_base)  # may be None
-            # If we still have no record, all sample columns become NA
+                    alt_idx = choose_alt_index(alleles, alt_base)
+
             row = [chrom, str(pos), ref_base, alt_base]
 
-            # initialise accumulators
             agg = {lab: {"ref_ADF": 0, "ref_ADR": 0, "alt_ADF": 0, "alt_ADR": 0}
                    for lab in label_set}
 
-            # For REF we always use index 0; for ALT we use alt_idx (may be None)
             if chosen is not None:
                 for s in sample_names:
                     call = chosen.samples.get(s, None)
@@ -163,23 +160,34 @@ def main():
                     adf = get_numberR(call, "ADF")
                     adr = get_numberR(call, "ADR")
 
-                    def safe_val(arr, idx):
-                        if arr is None or idx is None:
-                            return None
+                    # ALT counts = chosen mosaic allele
+                    alt_adf = None
+                    alt_adr = None
+                    if alt_idx is not None:
                         try:
-                            return arr[idx]
+                            alt_adf = adf[alt_idx] if adf is not None else None
+                            alt_adr = adr[alt_idx] if adr is not None else None
                         except Exception:
-                            return None
+                            pass
 
-                    ref_adf = safe_val(adf, 0)
-                    ref_adr = safe_val(adr, 0)
-                    alt_adf = safe_val(adf, alt_idx)
-                    alt_adr = safe_val(adr, alt_idx)
+                    # REF counts = sum of everything except the mosaic ALT
+                    ref_adf = 0
+                    ref_adr = 0
+                    if adf is not None:
+                        for i, v in enumerate(adf):
+                            if i != alt_idx and v is not None:
+                                ref_adf += v
+                    if adr is not None:
+                        for i, v in enumerate(adr):
+                            if i != alt_idx and v is not None:
+                                ref_adr += v
 
-                    if ref_adf is not None: agg[lab]["ref_ADF"] += ref_adf
-                    if ref_adr is not None: agg[lab]["ref_ADR"] += ref_adr
-                    if alt_adf is not None: agg[lab]["alt_ADF"] += alt_adf
-                    if alt_adr is not None: agg[lab]["alt_ADR"] += alt_adr
+                    agg[lab]["ref_ADF"] += ref_adf
+                    agg[lab]["ref_ADR"] += ref_adr
+                    if alt_adf is not None:
+                        agg[lab]["alt_ADF"] += alt_adf
+                    if alt_adr is not None:
+                        agg[lab]["alt_ADR"] += alt_adr
 
             # fill row with aggregated values
             for lab in label_set:

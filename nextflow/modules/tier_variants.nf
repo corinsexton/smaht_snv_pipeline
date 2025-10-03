@@ -44,7 +44,8 @@ process tier_variants {
             --labels \${labs}
 
     # assigns tiers based on LR ≥ 1 (TIER1), LR = 0 & SR ≥ 2 (TIER2), else (.)
-    split_lr_presence.py ${id}.parsed.minipileup.tsv ${id}.tiered.vcf
+    split_lr_presence.py ${id}.parsed.minipileup.tsv ${id}.tiered.vcf \
+        --original_vcf ${vcf}
     bgzip ${id}.tiered.vcf
     tabix ${id}.tiered.vcf.gz
 

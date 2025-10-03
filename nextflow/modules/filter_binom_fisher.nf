@@ -24,6 +24,7 @@ process filter_binom_fisher {
     output:
     tuple val(id), path("${id}.tiered.binom_fisher.vcf.gz"),path("${id}.tiered.binom_fisher.vcf.gz.tbi"), path(truth_vcf), path(truth_tbi)
     path("${id}.filter_binom_fisher.metrics.tsv"), emit: metrics
+    path("${id}.tiered.binom_fisher.vcf_failed_sr.vcf")
     path("${id}.tiered.binom_fisher.vcf_failed_both.vcf")
     path("${id}.tiered.binom_fisher.vcf_failed_ont.vcf")
     path("${id}.tiered.binom_fisher.vcf_failed_pb.vcf")

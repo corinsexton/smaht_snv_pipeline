@@ -11,6 +11,7 @@ nextflow.enable.dsl=2
 include { preprocess_vcf }       from '../modules/preprocess_vcf.nf'
 include { filter_centromere_segdups }  from '../modules/filter_centromere_segdups.nf'
 include { filter_poe }  from '../modules/filter_panel_errors.nf'
+include { filter_clustered_variants }  from '../modules/filter_clustered_variants.nf'
 include { filter_high_cov }  from '../modules/filter_high_cov.nf'
 
 workflow preprocess_and_filter_poe {
@@ -37,8 +38,8 @@ workflow preprocess_and_filter_poe {
     // Step 2: Add POE + its index to each tuple
     filter_centromere_segdups(preprocess_vcf.out.vcf,segdup_regions,centromere_regions)
     filter_poe(filter_centromere_segdups.out.vcf,panel_of_errors_fa)
-
+    filter_clustered_variants(filter_poe.out.vcf)
 
     emit:
-    filter_poe.out.vcf
+    filter_clustered_variants.out.vcf
 }

@@ -36,7 +36,7 @@ process filter_run_minipileup {
     # First extract intervals
     bcftools query -f '%CHROM\t%POS0\t%END\n' "${vcf}" > "${id}.bed"
     
-    # Get VCF header (just once)
+
     read -r chr start end < "${id}.bed"
     minipileup -f "${ref}" \
         -c -C -T 5 -Q 30 -q 10 \
@@ -49,14 +49,22 @@ process filter_run_minipileup {
     # -s drop alleles with depth<INT (0)
     cat "${id}.bed" | xargs -P8 -n3 bash -c '
         chr=\$1; pos1=\$2; pos2=\$3
+        tmp=\$(mktemp)
         minipileup -f "'"${ref}"'" \
             -c -C -Q 20 -q 30 \
             -s 0 \
             -r "\${chr}:\${pos2}-\${pos2}" \
             '"${sr_bams} ${lr_bams} ${lr_ont_bams}"' \
-        | grep -v "^#" || true
-    ' _ >> "${id}.minipileup.vcf"
-
+        | grep -v "^#" > "\$tmp"
+        echo "\$tmp"
+    ' _ > tmp_files.list
+    
+    # concatenate, sort, dedup
+    cat \$(cat tmp_files.list) >> "${id}.minipileup.vcf"
+    
+    # cleanup
+    xargs rm -f < tmp_files.list
+    rm -f tmp_files.list
 
     bcftools sort ${id}.minipileup.vcf
 

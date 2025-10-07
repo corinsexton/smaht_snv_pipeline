@@ -17,6 +17,10 @@ process runVEP {
   -------
   Tuple of original VCF, split VCF file after running VEP, tabix index of that file, vep config file, a output dir, and the index type of VCF file
   */
+
+  publishDir "${params.results_dir}/vep_annotated",
+    pattern: "${out}*",
+    mode: 'copy'
   
   label 'vep'
 
@@ -32,7 +36,7 @@ process runVEP {
   tabix_arg = index_type == 'tbi' ? '' : '-C'
   
   vep_cmd = """
-            vep --max_af -i ${original_file} \
+            vep -i ${original_file} \
             --custom file=/custom_ann/gnomad.joint.v4.1.sites.reduced.vcf.gz,short_name=gnomad4.1,format=vcf,type=exact,coords=0,fields=AF_grpmax_joint \
             --vcf --config ${vep_config}  -o out.vcf
             """

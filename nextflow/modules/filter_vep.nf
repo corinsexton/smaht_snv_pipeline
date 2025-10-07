@@ -42,7 +42,7 @@ process filter_vep {
       --gz \
       --output_file ${out_file} \
       --force_overwrite --only_matched \
-      -f "(MAX_AF < 0.001 or not MAX_AF) and (gnomad4.1_AF_grpmax_joint < 0.001 or not gnomad4.1_AF_grpmax_joint)"
+      -f "(gnomad4.1_AF_grpmax_joint < 0.001 or not gnomad4.1_AF_grpmax_joint)"
 
     # Index the output
     bgzip ${out_file}

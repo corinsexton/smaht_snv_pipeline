@@ -92,19 +92,8 @@ def infer_sex(vcf, max_sites=10000):
 
 def germline_p0(alt, ref, chrom, sex, err=1e-3):
     """
-    Return expected germline null AF and appropriate alternative.
-    - Diploid (autosomes, female X): p0=0.5, two-sided
-    - Haploid (male X, Y): assume REF is the true allele
-      → null ALT AF = err, alternative = "greater"
     """
-    n = alt + ref
-    if n == 0:
-        return None, "less"
-    haploid = (sex == "male" and chrom in ("X", "chrX", "Y", "chrY"))
-    if not haploid:
-        return 0.5, "less"
-    else:
-        return err, "greater"
+    return 0.5, 'less'
 
 def main():
     args = parse_args()

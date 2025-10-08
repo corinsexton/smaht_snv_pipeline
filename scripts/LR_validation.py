@@ -56,16 +56,21 @@ def main():
     counts, sample_ids = parse_pileup_counts(pileup_vcf)
     all_samples = list(counts.keys())
 
+
+
+    # CS EDIT
     # identify target and suffix samples
-    target_col = None
-    for s in all_samples:
-        if sample_ids[s] == case:
-            target_col = s
-            break
-    if target_col is None:
-        sys.stderr.write(f"Error: no pileup sample matches case '{case}'\n")
-        sys.exit(1)
-    suffix_cols = [s for s in all_samples if s != target_col]
+    #target_col = None
+    #for s in all_samples:
+    #    if sample_ids[s] == case:
+    #        target_col = s
+    #        break
+    #if target_col is None:
+    #    sys.stderr.write(f"Error: no pileup sample matches case '{case}'\n")
+    #    sys.exit(1)
+    #suffix_cols = [s for s in all_samples if s != target_col]
+
+    suffix_cols = [s for s in all_samples]
 
     # prepare output writers and write headers
     with gzip.open(proc_vcf, 'rt') as fin, \
@@ -77,8 +82,8 @@ def main():
                 pass_fout.write(line)
                 fail_fout.write(line)
             elif line.startswith('#'):
-                cols = ['LR_vaf','LR_dp','LR_alt','LR_sec_alt']
-                cols += [f"{sample_ids[s]}_LRvaf" for s in suffix_cols]
+                #cols = ['LR_vaf','LR_dp','LR_alt','LR_sec_alt']
+                cols = [f"{sample_ids[s]}_LRvaf" for s in suffix_cols]
                 header = line.rstrip('\n') + '\t' + '\t'.join(cols) + '\n'
                 pass_fout.write(header)
                 fail_fout.write(header)
@@ -91,11 +96,13 @@ def main():
         for rec in proc:
             total += 1
             key = (rec.chrom, rec.pos, rec.ref, rec.alts[0] if rec.alts else None)
-            # target counts
-            r0, a0, s0 = counts[target_col].get(key, [0,0,0])
-            # check primary alt > secondary and >1
-            if not (a0 > s0 and a0 > 1):
-                continue
+
+            # CS EDIT
+            ## target counts
+            #r0, a0, s0 = counts[target_col].get(key, [0,0,0])
+            ## check primary alt > secondary and >1
+            #if not (a0 > s0 and a0 > 1):
+            #    continue
 
             coverage = False
             overlap = False
@@ -112,17 +119,18 @@ def main():
                 if donor != main_donor and a1 > 1:
                     overlap = True
 
-            # require at least one other sample coverage
-            if not coverage:
-                continue
+            ## require at least one other sample coverage
+            #if not coverage:
+            #    continue
 
-            dp0 = r0 + a0
-            vaf0 = a0 / dp0 if dp0 else 0.0
-            sec_alt = s0
+            # CS EDIT
+            #dp0 = r0 + a0
+            #vaf0 = a0 / dp0 if dp0 else 0.0
+            #sec_alt = s0
 
             line = str(rec).split('\n',1)[0]
             out_line = (
-                f"{line}\t{vaf0:.4f}\t{dp0}\t{a0}\t{sec_alt}"
+                f"{line}\t"
                 + ''.join(f"\t{v}" for v in suffix_vafs)
                 + "\n"
             )

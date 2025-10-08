@@ -49,7 +49,9 @@ process checkVCF {
   Tuple of VCF, VCF index, vep config file, a output dir, and the index type of VCF file
   */
 
-  cpus params.cpus
+  cpus 1
+  memory '500M'
+  time '30m'
   label 'vep'
   errorStrategy 'ignore'
 

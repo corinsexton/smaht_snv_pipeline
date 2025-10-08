@@ -31,18 +31,20 @@ def main():
     except Exception as e:
         sys.stderr.write(f"ERROR opening VCF: {e}\n")
         sys.exit(1)
-
-    header = vcf_in.header.copy()
-    # Add INFO for mean depth if not present
+    
+    # Add INFO definition to the input header itself
     try:
-        header.add_line('##INFO=<ID=DP_AVG,Number=1,Type=Float,Description="Mean depth across REF span computed from BAM">')
+        vcf_in.header.add_line(
+            '##INFO=<ID=DP_AVG,Number=1,Type=Float,Description="Mean depth across REF span computed from BAM">'
+        )
     except ValueError:
-        # Already present; fine to proceed
+        # Already present
         pass
-
+    
     out_mode = "wz" if args.out.endswith(".gz") else "w"
     try:
-        vcf_out = pysam.VariantFile(args.out, out_mode, header=header)
+        # Use the same (now-augmented) header for output
+        vcf_out = pysam.VariantFile(args.out, out_mode, header=vcf_in.header)
     except Exception as e:
         sys.stderr.write(f"ERROR creating output VCF: {e}\n")
         sys.exit(1)

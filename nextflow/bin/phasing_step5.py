@@ -137,12 +137,12 @@ def write_phasing_tags(results, out_prefix):
 def main():
     parser = argparse.ArgumentParser(description="Phasing step: read-level haplotype analysis, classification, and tag output.")
     parser.add_argument("-t", "--tsv", required=True, help="TSV from Step 4")
-    parser.add_argument("-b", "--bams", required=True, help="Comma-separated list of PacBio BAMs")
+    parser.add_argument("-b", "--bams", nargs="+", required=True, help="PacBio BAMs")
     parser.add_argument("-s", "--sex", default="unknown", choices=["male", "female", "unknown"], help="Sex of the sample (for haploid X/Y logic)")
     parser.add_argument("-i", "--id", default="haplotype_summary", help="Output prefix for results")
     args = parser.parse_args()
 
-    bam_list = args.bams.split(",")
+    bam_list = args.bams
     results = count_haplotypes(args.tsv, bam_list, args.sex)
 
     # Write main classification table

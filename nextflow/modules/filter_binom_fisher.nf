@@ -22,7 +22,7 @@ process filter_binom_fisher {
     tuple val(id), path(tiered_vcf), path(tiered_vcf_index), path(truth_vcf), path(truth_tbi)
 
     output:
-    tuple val(id), path("${id}.tiered.binom_fisher.vcf.gz"),path("${id}.tiered.binom_fisher.vcf.gz.tbi"), path(truth_vcf), path(truth_tbi)
+    tuple val(id), path("${id}.tiered.binom_fisher.vcf.gz"),path("${id}.tiered.binom_fisher.vcf.gz.tbi"), path(truth_vcf), path(truth_tbi), emit: vcf
     path("${id}.filter_binom_fisher.metrics.tsv"), emit: metrics
     path("${id}.tiered.binom_fisher.vcf_failed_sr.vcf")
     path("${id}.tiered.binom_fisher.vcf_failed_both.vcf")

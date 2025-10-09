@@ -6,6 +6,7 @@ nextflow.enable.dsl=2
 include { preprocess_and_filter_poe } from './workflows/preprocess_and_filter_poe.nf'
 include { run_vep } from './workflows/run_vep'
 include { split_tier1_tier2 } from './workflows/split_tier1_tier2.nf'
+include { phasing } from './workflows/phasing.nf'
 
 //params.input_csv       = "./mt_calls.csv"
 //params.input_csv       = "./150x_files_ALL.csv"
@@ -16,6 +17,7 @@ params.panel_of_errors_index  = "/n/data1/hms/dbmi/park/corinne/smaht/test_bench
 params.results_dir     = "./new_results"
 params.ref             = "/n/data1/hms/dbmi/park-smaht_dac/ref/GRCh38_no_alt/hg38_no_alt.fa"
 params.ref_index             = "/n/data1/hms/dbmi/park-smaht_dac/ref/GRCh38_no_alt/hg38_no_alt.fa.fai"
+params.ref_dict             = "/n/data1/hms/dbmi/park-smaht_dac/ref/GRCh38_no_alt/hg38_no_alt.dict"
 //params.segdup_regions = "/n/data1/hms/dbmi/park/SOFTWARE/UCSC/GRCh38_UCSC_SegDup.formatted.bed"
 params.segdup_regions = "/home/cos689/smaht/test_benchmarking/smaht_snv_pipeline/nextflow/segdup_GRCh38_official.bed.gz"
 //params.centromere_regions = "/home/cos689/smaht/test_benchmarking/smaht_snv_pipeline/nextflow/centromere.bed"
@@ -49,7 +51,8 @@ def poe_input = tuple(poe_fa, poe_fai)
 
 def ref_fa = file(params.ref)
 def ref_fai = file(params.ref_index)
-def ref_input = tuple(ref_fa, ref_fai)
+def ref_dict = file(params.ref_dict)
+def ref_input = tuple(ref_fa, ref_fai, ref_dict)
 
 
 // ---------- helper to parse cram/crai CSV ----------
@@ -145,6 +148,12 @@ workflow {
     // run pileup and split based on LR presence (tier1) / absence (tier2)
     tier_split_output = split_tier1_tier2(vep_snvs_out.join(truth_ch), input_bams, ref_input)
 
+    phasing(tier_split_output,input_bams, ref_input, vep_config)
+
+     // vcf_inputs
+  //       bam_inputs
+  //       ref_input
+  //       vep_config
 
     // run last filters based on tier1 or tier2
     // tier1_filters(tier_split_output.tier1)

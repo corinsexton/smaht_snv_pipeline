@@ -54,7 +54,7 @@ workflow run_vep {
   main:
 
 
-    runVEPonVCF(inputs)
+    runVEPonVCF(inputs,'mosaic')
     //// Run VEP on VCF files with header
     //inputs |
     //  checkVCF |
@@ -70,7 +70,7 @@ workflow run_vep {
     //out = runVEPonVCF.out.files
     //        .groupTuple(by: [0, 1, 4])
     //mergeVCF(out)
-    filter_vep(runVEPonVCF.out)
+    filter_vep(runVEPonVCF.out, 'mosaic')
 
     split_snvs_indels(filter_vep.out.vcf)
 

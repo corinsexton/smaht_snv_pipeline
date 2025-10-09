@@ -39,5 +39,5 @@ workflow split_tier1_tier2 {
     //    filter_tier1_tier2(filter_strand_bias.out)
 
     emit:
-    tier_variants.out.metrics
+    filter_binom_fisher.out.vcf
 }

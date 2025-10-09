@@ -19,7 +19,7 @@ process filter_run_minipileup {
         path(sr_bams), path(sr_bais), 
         path(lr_bams), path(lr_bais), 
         path(lr_ont_bams), path(lr_ont_bais)
-    tuple path(ref), path(ref_index)
+    tuple path(ref), path(ref_index), path(ref_dict)
 
 
     output:

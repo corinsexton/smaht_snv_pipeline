@@ -18,7 +18,7 @@ process runVEP {
   Tuple of original VCF, split VCF file after running VEP, tabix index of that file, vep config file, a output dir, and the index type of VCF file
   */
 
-  publishDir "${params.results_dir}/vep_annotated",
+  publishDir "${params.results_dir}/vep_annotated/${filter_type}",
     pattern: "${out}*",
     mode: 'copy'
   
@@ -26,6 +26,7 @@ process runVEP {
 
   input:
   tuple val(id), val(original_file), path(truth_vcf), path(truth_tbi), path(index), path(vep_config)
+  val(filter_type)
   
   output:
   tuple val(id), path("${out}{.gz,}"), path("${out}{.gz,}.{tbi,csi}"), path(truth_vcf), path(truth_tbi), emit: files

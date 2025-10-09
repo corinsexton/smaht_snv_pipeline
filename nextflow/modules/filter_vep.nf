@@ -15,7 +15,7 @@ process filter_vep {
 
   label 'vep'
 
-  publishDir "${params.results_dir}/vep_filtered",
+  publishDir "${params.results_dir}/vep_filtered/${filter_value}",
     pattern: "${out_file}.gz*",
     mode: 'copy'
 
@@ -27,6 +27,7 @@ process filter_vep {
 
   input:
     tuple(val(id), path(vcf), path(vcf_index), path(truth_vcf), path(truth_tbi))
+    val(filter_value)
 
   output:
     tuple val(id), path("${out_file}.gz"), path("${out_file}.gz.tbi"), path(truth_vcf), path(truth_tbi), emit: vcf
@@ -38,11 +39,19 @@ process filter_vep {
   out_file = file(vcf).getSimpleName() + "_filtered.vcf"
 
     """
+
+    # which filter are we applying (grab germline or grab mosaic)
+    if [ $filter_value != 'germline' ]; then
+        filter="(gnomad4.1_AF_grpmax_joint < 0.001 or not gnomad4.1_AF_grpmax_joint)"
+    else
+         filter="(gnomad4.1_AF_grpmax_joint > 0.001)"
+    fi
+
     filter_vep --input_file ${vcf} \
       --gz \
       --output_file ${out_file} \
       --force_overwrite --only_matched \
-      -f "(gnomad4.1_AF_grpmax_joint < 0.001 or not gnomad4.1_AF_grpmax_joint)"
+      -f "\$filter"
 
     # Index the output
     bgzip ${out_file}

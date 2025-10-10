@@ -5,13 +5,13 @@ process filter_centromere_segdups {
     mode:'copy'
 
 
-    publishDir "${params.results_dir}//centromere_segdups_filtered",
-    pattern: "${id}.filter_centromere_segdups.metrics.tsv",
+    publishDir "${params.results_dir}/centromere_segdups_filtered",
+    pattern: "${id}.filter_centromere_segdups.*.tsv",
     mode:'copy'
 
 
     cpus 1
-    memory '500M'
+    memory '2G'
     time '30m'
 
     tag "$id"
@@ -20,19 +20,24 @@ process filter_centromere_segdups {
     tuple val(id), path(vcf), path(tbi), path(truth_vcf), path(truth_tbi)
     path ucsc_regions
     path centromere_regions
+    path simple_repeat_regions 
+    tuple path(easy_regions), path(diff_regions), path(ext_regions),
+        path(easy_regions_tbi), path(diff_regions_tbi), path(ext_regions_tbi)
 
     output:
-    tuple val(id),
+        tuple val(id),
           path("${id}.filtered.vcf.gz"),
           path("${id}.filtered.vcf.gz.tbi"),
           path(truth_vcf), path(truth_tbi), emit: vcf
         path("${id}.filter_centromere_segdups.metrics.tsv"), emit: metrics
+        path("${id}.filter_centromere_segdups.regions.tsv"), emit: regions 
 
     script:
     """
     # Exclude variants in UCSC SegDup regions, centromeres, and >2 x avg_depth
     bcftools view -T ^${ucsc_regions} ${vcf} | \
-        bcftools view -T ^${centromere_regions} -Ob -o filtered.vcf.gz
+        bcftools view -T ^${centromere_regions} - | \
+        bcftools view -T ^${simple_repeat_regions} -Ob -o filtered.vcf.gz
 
     mv filtered.vcf.gz ${id}.filtered.vcf.gz
     tabix -f ${id}.filtered.vcf.gz
@@ -41,6 +46,26 @@ process filter_centromere_segdups {
     # --- metrics (standard schema) ---
     BEFORE_VCF=${vcf}
     AFTER_VCF=${id}.filtered.vcf.gz
+
+    # check regions
+    num_easy_before=\$( bedtools intersect -u -b $easy_regions -a \${BEFORE_VCF} | grep -vc "^#")
+    num_easy_after=\$( bedtools intersect -u -b $easy_regions -a \${AFTER_VCF} | grep -vc "^#")
+
+    num_diff_before=\$( bedtools intersect -u -b $diff_regions -a \${BEFORE_VCF} | grep -vc "^#")
+    num_diff_after=\$( bedtools intersect -u -b $diff_regions -a \${AFTER_VCF} | grep -vc "^#")
+
+    num_ext_before=\$( bedtools intersect -u -b $ext_regions -a \${BEFORE_VCF} | grep -vc "^#")
+    num_ext_after=\$( bedtools intersect -u -b $ext_regions -a \${AFTER_VCF} | grep -vc "^#")
+
+
+    {
+      echo -e "id\tstep\tregion_type\tnum_before\tnum_after"
+      echo -e "${id}\tfilter_centromere_segdups\teasy\t\${num_easy_before}\t\${num_easy_after}"
+      echo -e "${id}\tfilter_centromere_segdups\tdiff\t\${num_diff_before}\t\${num_diff_after}"
+      echo -e "${id}\tfilter_centromere_segdups\text\t\${num_ext_before}\t\${num_ext_after}"
+    } > ${id}.filter_centromere_segdups.regions.tsv
+
+
 
     num_before=\$(bcftools view -H "\${BEFORE_VCF}" | wc -l | awk '{print \$1}')
     num_after=\$(bcftools view -H "\${AFTER_VCF}"  | wc -l | awk '{print \$1}')

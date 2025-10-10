@@ -5,7 +5,7 @@ process filter_binom_fisher {
     mode:'copy'
 
     publishDir "${params.results_dir}/binom_fisher",
-    pattern: "${id}.filter_binom_fisher.metrics.tsv",
+    pattern: "${id}.filter_binom_fisher.*.tsv",
     mode:'copy'
 
     publishDir "${params.results_dir}/binom_fisher/failed_variants",
@@ -13,17 +13,21 @@ process filter_binom_fisher {
     mode:'copy'
 
     cpus 1
-    memory '1G'
+    memory '2G'
     time '1h'
 
     tag "$id"
 
     input:
     tuple val(id), path(tiered_vcf), path(tiered_vcf_index), path(truth_vcf), path(truth_tbi)
+    tuple path(easy_regions), path(diff_regions), path(ext_regions),
+        path(easy_regions_tbi), path(diff_regions_tbi), path(ext_regions_tbi)
+
 
     output:
     tuple val(id), path("${id}.tiered.binom_fisher.vcf.gz"),path("${id}.tiered.binom_fisher.vcf.gz.tbi"), path(truth_vcf), path(truth_tbi), emit: vcf
     path("${id}.filter_binom_fisher.metrics.tsv"), emit: metrics
+    path("${id}.filter_binom_fisher.regions.tsv"), emit: regions
     path("${id}.tiered.binom_fisher.vcf_failed_sr.vcf")
     path("${id}.tiered.binom_fisher.vcf_failed_both.vcf")
     path("${id}.tiered.binom_fisher.vcf_failed_ont.vcf")
@@ -54,6 +58,24 @@ process filter_binom_fisher {
 
     num_after_tier1=\$(bcftools view -H "\${TIER1_vcf}"  | wc -l | awk '{print \$1}')
     num_after_tier2=\$(bcftools view -H "\${TIER2_vcf}"  | wc -l | awk '{print \$1}')
+
+    # check regions
+    num_easy_before=\$( bedtools intersect -u -b $easy_regions -a \${BEFORE_VCF} | grep -vc "^#")
+    num_easy_after=\$( bedtools intersect -u -b $easy_regions -a \${AFTER_VCF} | grep -vc "^#")
+
+    num_diff_before=\$( bedtools intersect -u -b $diff_regions -a \${BEFORE_VCF} | grep -vc "^#")
+    num_diff_after=\$( bedtools intersect -u -b $diff_regions -a \${AFTER_VCF} | grep -vc "^#")
+
+    num_ext_before=\$( bedtools intersect -u -b $ext_regions -a \${BEFORE_VCF} | grep -vc "^#")
+    num_ext_after=\$( bedtools intersect -u -b $ext_regions -a \${AFTER_VCF} | grep -vc "^#")
+
+    {
+      echo -e "id\tstep\tregion_type\tnum_before\tnum_after"
+      echo -e "${id}\tfilter_binom_fisher\teasy\t\${num_easy_before}\t\${num_easy_after}"
+      echo -e "${id}\tfilter_binom_fisher\tdiff\t\${num_diff_before}\t\${num_diff_after}"
+      echo -e "${id}\tfilter_binom_fisher\text\t\${num_ext_before}\t\${num_ext_after}"
+    } > ${id}.filter_binom_fisher.regions.tsv
+
 
     # Compute truth overlaps only if truth files are present
     if [[ -f "${truth_vcf}" ]]; then

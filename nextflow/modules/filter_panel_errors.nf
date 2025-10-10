@@ -5,7 +5,7 @@ process filter_poe {
     mode:'copy'
 
     publishDir "${params.results_dir}/poe_filtered",
-    pattern: "${id}.filter_poe.metrics.tsv",
+    pattern: "${id}.filter_poe.*.tsv",
     mode:'copy'
 
     cache 'lenient'
@@ -18,6 +18,8 @@ process filter_poe {
     input:
     tuple val(id), path(vcf), path(tbi), path(truth_vcf), path(truth_tbi)
     tuple path(error_panel_fa),path(error_panel_fai)   // input index for panel
+    tuple path(easy_regions), path(diff_regions), path(ext_regions),
+        path(easy_regions_tbi), path(diff_regions_tbi), path(ext_regions_tbi)
 
     output:
     tuple val(id),
@@ -25,6 +27,7 @@ process filter_poe {
           path("${id}.pon.filtered.vcf.gz.tbi"),
           path(truth_vcf), path(truth_tbi), emit: vcf
     path("${id}.filter_poe.metrics.tsv"), emit: metrics
+    path("${id}.filter_poe.regions.tsv"), emit: regions
 
     script:
     """
@@ -40,7 +43,27 @@ process filter_poe {
      # --- metrics (standard schema) ---
     BEFORE_VCF=${vcf}
     AFTER_VCF=${id}.pon.filtered.vcf.gz
-    
+
+    # check regions
+    num_easy_before=\$( bedtools intersect -u -b $easy_regions -a \${BEFORE_VCF} | grep -vc "^#")
+    num_easy_after=\$( bedtools intersect -u -b $easy_regions -a \${AFTER_VCF} | grep -vc "^#")
+
+    num_diff_before=\$( bedtools intersect -u -b $diff_regions -a \${BEFORE_VCF} | grep -vc "^#")
+    num_diff_after=\$( bedtools intersect -u -b $diff_regions -a \${AFTER_VCF} | grep -vc "^#")
+
+    num_ext_before=\$( bedtools intersect -u -b $ext_regions -a \${BEFORE_VCF} | grep -vc "^#")
+    num_ext_after=\$( bedtools intersect -u -b $ext_regions -a \${AFTER_VCF} | grep -vc "^#")
+
+
+    {
+      echo -e "id\tstep\tregion_type\tnum_before\tnum_after"
+      echo -e "${id}\tfilter_poe\teasy\t\${num_easy_before}\t\${num_easy_after}"
+      echo -e "${id}\tfilter_poe\tdiff\t\${num_diff_before}\t\${num_diff_after}"
+      echo -e "${id}\tfilter_poe\text\t\${num_ext_before}\t\${num_ext_after}"
+    } > ${id}.filter_poe.regions.tsv
+
+
+
     num_before=\$(bcftools view -H "\${BEFORE_VCF}" | wc -l | awk '{print \$1}')
     num_after=\$(bcftools view -H "\${AFTER_VCF}"  | wc -l | awk '{print \$1}')
     

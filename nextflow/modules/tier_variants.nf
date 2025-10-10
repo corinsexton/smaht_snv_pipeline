@@ -16,7 +16,7 @@ process tier_variants {
     //cache false
 
     cpus 1
-    memory '1G'
+    memory '2G'
     time '1h'
 
     tag "$id"
@@ -27,6 +27,8 @@ process tier_variants {
           path(truth_vcf), path(truth_vcf_tbi),
           path(minipileup_vcf)
     path(labels)
+    tuple path(easy_regions), path(diff_regions), path(ext_regions),
+        path(easy_regions_tbi), path(diff_regions_tbi), path(ext_regions_tbi)
 
     output:
     tuple val(id), path("${id}.tiered.vcf.gz"), path("${id}.tiered.vcf.gz.tbi"),path(truth_vcf), path(truth_vcf_tbi), emit: vcf
@@ -58,9 +60,28 @@ process tier_variants {
 
     # --- metrics (standard schema) ---
     BEFORE_VCF=${vcf}
-    #  AFTER_VCF=${id}.tiered.vcf.gz
+    AFTER_VCF=${id}.tiered.vcf.gz
     TIER1_vcf=${id}.tier1.vcf.gz
     TIER2_vcf=${id}.tier2.vcf.gz
+
+    # check regions
+    num_easy_before=\$( bedtools intersect -u -b $easy_regions -a \${BEFORE_VCF} | grep -vc "^#")
+    num_easy_after=\$( bedtools intersect -u -b $easy_regions -a \${AFTER_VCF} | grep -vc "^#")
+
+    num_diff_before=\$( bedtools intersect -u -b $diff_regions -a \${BEFORE_VCF} | grep -vc "^#")
+    num_diff_after=\$( bedtools intersect -u -b $diff_regions -a \${AFTER_VCF} | grep -vc "^#")
+
+    num_ext_before=\$( bedtools intersect -u -b $ext_regions -a \${BEFORE_VCF} | grep -vc "^#")
+    num_ext_after=\$( bedtools intersect -u -b $ext_regions -a \${AFTER_VCF} | grep -vc "^#")
+
+
+    {
+      echo -e "id\tstep\tregion_type\tnum_before\tnum_after"
+      echo -e "${id}\ttier\teasy\t\${num_easy_before}\t\${num_easy_after}"
+      echo -e "${id}\ttier\tdiff\t\${num_diff_before}\t\${num_diff_after}"
+      echo -e "${id}\ttier\text\t\${num_ext_before}\t\${num_ext_after}"
+    } > ${id}.tier.regions.tsv
+
 
     num_before=\$(bcftools view -H "\${BEFORE_VCF}" | wc -l | awk '{print \$1}')
     # num_after=\$(bcftools view -H "\${AFTER_VCF}"  | wc -l | awk '{print \$1}')

@@ -16,18 +16,21 @@ process split_snvs_indels {
 
 
   publishDir "${params.results_dir}/vep_filtered",
-    pattern: "${id}.snv_only.metrics.tsv",
+    pattern: "${id}.snv_only.*.tsv",
     mode: 'copy'
 
   tag "$vcf.baseName"
 
   input:
     tuple val(id), path(vcf), path(vcf_index), path(truth_vcf), path(truth_tbi)
+    tuple path(easy_regions), path(diff_regions), path(ext_regions),
+        path(easy_regions_tbi), path(diff_regions_tbi), path(ext_regions_tbi)
 
   output:
     tuple val(id), path("snvs_${vcf.baseName}.gz"), path("snvs_${vcf.baseName}.gz.tbi"), emit: snvs
     tuple val(id), path("indels_${vcf.baseName}.gz"), path("indels_${vcf.baseName}.gz.tbi"), emit: indels
     path "${id}.snv_only.metrics.tsv", emit: metrics
+    path "${id}.snv_only.regions.tsv", emit: regions
 
   script:
     """
@@ -37,6 +40,24 @@ process split_snvs_indels {
     # --- metrics (standard schema) ---
     BEFORE_VCF=${vcf}
     AFTER_VCF=snvs_${vcf.baseName}.gz
+
+    # check regions
+    num_easy_before=\$( bedtools intersect -u -b $easy_regions -a \${BEFORE_VCF} | grep -vc "^#")
+    num_easy_after=\$( bedtools intersect -u -b $easy_regions -a \${AFTER_VCF} | grep -vc "^#")
+
+    num_diff_before=\$( bedtools intersect -u -b $diff_regions -a \${BEFORE_VCF} | grep -vc "^#")
+    num_diff_after=\$( bedtools intersect -u -b $diff_regions -a \${AFTER_VCF} | grep -vc "^#")
+
+    num_ext_before=\$( bedtools intersect -u -b $ext_regions -a \${BEFORE_VCF} | grep -vc "^#")
+    num_ext_after=\$( bedtools intersect -u -b $ext_regions -a \${AFTER_VCF} | grep -vc "^#")
+
+
+    {
+      echo -e "id\tstep\tregion_type\tnum_before\tnum_after"
+      echo -e "${id}\tsnv_only\teasy\t\${num_easy_before}\t\${num_easy_after}"
+      echo -e "${id}\tsnv_only\tdiff\t\${num_diff_before}\t\${num_diff_after}"
+      echo -e "${id}\tsnv_only\text\t\${num_ext_before}\t\${num_ext_after}"
+    } > ${id}.snv_only.regions.tsv
 
     num_before=\$(bcftools view -H "\${BEFORE_VCF}" | wc -l | awk '{print \$1}')
     num_after=\$(bcftools view -H "\${AFTER_VCF}"  | wc -l | awk '{print \$1}')

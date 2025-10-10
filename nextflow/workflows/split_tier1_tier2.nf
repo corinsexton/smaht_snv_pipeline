@@ -10,6 +10,7 @@ workflow split_tier1_tier2 {
         vcf_inputs
         bam_inputs
         ref_input
+        regions_input
 
     main: 
     // Step 1: run minipileup to get counts in SR and LR
@@ -23,20 +24,10 @@ workflow split_tier1_tier2 {
     filter_run_minipileup(vcf_bam_channel,ref_input)
 
     // count up reads in each assay, tier1/2 label
-    tier_variants(filter_run_minipileup.out.vcf,filter_run_minipileup.out.labels)
+    tier_variants(filter_run_minipileup.out.vcf,filter_run_minipileup.out.labels,regions_input)
 
     // run binomial and fisher tests to get passing variants
-    filter_binom_fisher(tier_variants.out.vcf)
-
-    //    // input: tuple val(id), path(vcf), path(tbi), path("${id}.minipileup.vcf")
-    //    // output: tuple val(id), path(vcf), path(tbi), path("${id}.minipileup.vcf")
-    //    filter_depth(filter_run_minipileup.out) 
-    //    filter_strand_bias(filter_depth.out) 
-
-
-    //    // output: filter_tier1_tier2.tier1 tuple val(id),  path(vcf), path(tbi)
-    //    // output: filter_tier1_tier2.tier2 tuple val(id),  path(vcf), path(tbi)
-    //    filter_tier1_tier2(filter_strand_bias.out)
+    filter_binom_fisher(tier_variants.out.vcf, regions_input)
 
     emit:
     filter_binom_fisher.out.vcf

@@ -14,18 +14,84 @@ import argparse, csv, sys
 import pysam
 from collections import OrderedDict
 from datetime import datetime
+import math
+
+def get_read_cutoffs(short_cov: int, long_cov: int,
+                     error_rate: float = 0.001,
+                     target_p: float = 1e-3):
+    """
+    Compute read count cutoffs for short, long, and combined coverage
+    using Poisson approximation to the binomial distribution.
+
+    Parameters
+    ----------
+    short_cov : int
+        Short-read coverage
+    long_cov : int
+        Long-read coverage
+    error_rate : float, optional
+        Sequencing error rate (default = 0.001)
+    target_p : float, optional
+        Target probability for random error (default = 1e-3)
+
+    Returns
+    -------
+    dict
+        {
+            'short_only_cutoff': int,
+            'long_only_cutoff': int,
+            'combined_sr_cutoff': int,
+            'combined_lr_cutoff': int,
+            'combined_total_cutoff': int
+        }
+    """
+
+    def poisson_tail(lmbda, k):
+        """Compute P(X >= k) for Poisson(λ)"""
+        # To avoid underflow for large λ, accumulate tail from k to λ+10√λ
+        # but cap at reasonable bound
+        max_k = int(lmbda + 10 * math.sqrt(lmbda)) + 50
+        tail = 0.0
+        term = math.exp(-lmbda)  # P(X=0)
+        for i in range(1, max_k + 1):
+            term *= lmbda / i
+            if i >= k:
+                tail += term
+        return tail
+
+    def find_cutoff(cov, err_rate, target_p):
+        """Find minimal count where Poisson tail < target_p."""
+        lam = cov * err_rate
+        for r in range(1, cov + 1):
+            if poisson_tail(lam, r) < target_p:
+                return r
+        return cov
+
+    # independent cutoffs
+    sr_cutoff = find_cutoff(short_cov, error_rate, target_p)
+    lr_cutoff = find_cutoff(long_cov, error_rate, target_p)
+
+    # combined cutoff using total coverage
+    total_cov = short_cov + long_cov
+    combined_total = find_cutoff(total_cov, error_rate, target_p)
+
+    # distribute proportionally to coverage, ensure ≥1 of each
+    combined_sr = max(1, round(short_cov / total_cov * combined_total))
+    combined_lr = max(1, combined_total - combined_sr)
+
+    return {
+        "short_only_cutoff": sr_cutoff,
+        "long_only_cutoff": lr_cutoff,
+        "combined_sr_cutoff": combined_sr,
+        "combined_lr_cutoff": combined_lr,
+        "combined_total_cutoff": combined_total
+    }
 
 def parse_args():
     ap = argparse.ArgumentParser(description="Tier variants by LR/SR support and preserve FORMAT/sample fields from original VCF.")
     ap.add_argument("input_tsv", help="Wide TSV from parse_minipileup.py")
     ap.add_argument("output_vcf", help="Output VCF path")
     ap.add_argument("--original_vcf", required=True, help="Original VCF with FORMAT/sample data")
-    ap.add_argument("--lr_threshold", type=int, default=3,
-                    help="Minimum LR ALT reads required for TIER1 (default: 3)")
-    ap.add_argument("--sr_threshold", type=int, default=2,
-                    help="Minimum SR ALT reads required for TIER1 (default: 2)")
-    ap.add_argument("--sr_only_threshold", type=int, default=4,
-                    help="Minimum SR ALT reads required for TIER2 (default: 4)")
     return ap.parse_args()
 
 def safe_int(x):
@@ -103,7 +169,7 @@ def main():
     out_header = orig_vcf.header.copy()
     out_header.add_line('##source=split_lr_presence.py')
     out_header.add_line(f'##fileDate={datetime.now().strftime("%Y%m%d")}')
-    out_header.add_line(f'##thresholds=lr:{args.lr_threshold},sr:{args.sr_threshold},sr_only:{args.sr_only_threshold}')
+    #out_header.add_line(f'##thresholds=lr:{args.lr_threshold},sr:{args.sr_threshold},sr_only:{args.sr_only_threshold}')
     ensure_header_fields(out_header, ont_present=(ont_name is not None))
 
     # Open output VCF with pysam (this writes a proper header)
@@ -140,13 +206,25 @@ def main():
             sr_alt_total = sr_alt_adf + sr_alt_adr
             lr_alt_total = lr_alt_adf + lr_alt_adr
 
-            # Tier classification via CLI thresholds
-            if sr_alt_total >= args.sr_threshold and lr_alt_total >= args.lr_threshold:
-                filt = "TIER1"
-            elif sr_alt_total >= args.sr_only_threshold:
-                filt = "TIER2"
+            sr_total = sr_ref_adf + sr_ref_adr + sr_alt_total 
+            lr_total = lr_ref_adf + lr_ref_adr + lr_alt_total
+
+            print(f"row:  {row}")
+            #print(f"sr_total:{sr_total}, lr_total:{lr_total}")
+
+            if (sr_total != 0): 
+                thresholds = get_read_cutoffs(sr_total,lr_total)
+                # Tier classification via CLI thresholds
+                if sr_alt_total >= thresholds["combined_sr_cutoff"] and lr_alt_total >= thresholds["combined_lr_cutoff"]:
+                    filt = "TIER1"
+                elif sr_alt_total >= thresholds["short_only_cutoff"]:
+                    filt = "TIER2"
+                else:
+                    filt = None  
             else:
-                filt = None  # will output PASS
+                print("missing in minipileup")
+                filt = None
+
 
             # Create a new record
             rec = out_vcf.new_record(
@@ -161,7 +239,7 @@ def main():
             # Set FILTER
             rec.filter.clear()
             if filt:
-                rec.filter.add(filt)  # else PASS
+                rec.filter.add(filt)  # else .
 
             # Set INFO counts
             rec.info["SR_ADF"] = (sr_ref_adf, sr_alt_adf)

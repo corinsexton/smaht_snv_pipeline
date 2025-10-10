@@ -14,6 +14,7 @@ workflow phasing {
         bam_inputs
         ref_input
         vep_config
+        regions_input
 
     main: 
     // Step 1: run minipileup to get counts in SR and LR
@@ -53,7 +54,7 @@ workflow phasing {
       .set { step5_input }
 
 
-   phasing_step5(step5_input)
+   phasing_step5(step5_input,regions_input)
 
     emit:
     phasing_step5.out.vcf

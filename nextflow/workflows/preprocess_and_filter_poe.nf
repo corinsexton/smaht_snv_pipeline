@@ -23,22 +23,23 @@ workflow preprocess_and_filter_poe {
         ref
         segdup_regions
         centromere_regions
-        max_depth
+        simple_repeat_regions
+        regions_input
 
     main: 
     // Step 1: Normalize, filter PASS, atomize
     // Assumes: preprocess_vcf emits (id, processed_vcf, processed_vcf.tbi)
-    vcf_inputs
+    preprocess_input = vcf_inputs
         .map { id, vcf, tbi, truth, truth_tbi ->
             tuple(id, vcf, tbi, ref, truth, truth_tbi)
         }
-        | preprocess_vcf
+    preprocess_vcf(preprocess_input,regions_input)
 
 
     // Step 2: Add POE + its index to each tuple
-    filter_centromere_segdups(preprocess_vcf.out.vcf,segdup_regions,centromere_regions)
-    filter_poe(filter_centromere_segdups.out.vcf,panel_of_errors_fa)
-    filter_clustered_variants(filter_poe.out.vcf)
+    filter_centromere_segdups(preprocess_vcf.out.vcf,segdup_regions,centromere_regions,simple_repeat_regions,regions_input)
+    filter_poe(filter_centromere_segdups.out.vcf,panel_of_errors_fa,regions_input)
+    filter_clustered_variants(filter_poe.out.vcf,regions_input)
 
     emit:
     filter_clustered_variants.out.vcf

@@ -6,18 +6,20 @@ process filter_clustered_variants {
 
 
     publishDir "${params.results_dir}/clusters_filtered",
-    pattern: "${id}.filter_clustered.metrics.tsv",
+    pattern: "${id}.filter_clustered.*.tsv",
     mode:'copy'
 
 
     cpus 1
-    memory '500M'
+    memory '2G'
     time '30m'
 
     tag "$id"
 
     input:
     tuple val(id), path(vcf), path(tbi), path(truth_vcf), path(truth_tbi)
+    tuple path(easy_regions), path(diff_regions), path(ext_regions),
+        path(easy_regions_tbi), path(diff_regions_tbi), path(ext_regions_tbi)
 
     output:
     tuple val(id),
@@ -25,6 +27,7 @@ process filter_clustered_variants {
           path("${id}.filtered.clusters.vcf.gz.tbi"),
           path(truth_vcf), path(truth_tbi), emit: vcf
         path("${id}.filter_clustered.metrics.tsv"), emit: metrics
+        path("${id}.filter_clustered.regions.tsv"), emit: regions
 
     script:
     """
@@ -38,6 +41,24 @@ process filter_clustered_variants {
     # --- metrics (standard schema) ---
     BEFORE_VCF=${vcf}
     AFTER_VCF=${id}.filtered.clusters.vcf.gz
+
+    # check regions
+    num_easy_before=\$( bedtools intersect -u -b $easy_regions -a \${BEFORE_VCF} | grep -vc "^#")
+    num_easy_after=\$( bedtools intersect -u -b $easy_regions -a \${AFTER_VCF} | grep -vc "^#")
+
+    num_diff_before=\$( bedtools intersect -u -b $diff_regions -a \${BEFORE_VCF} | grep -vc "^#")
+    num_diff_after=\$( bedtools intersect -u -b $diff_regions -a \${AFTER_VCF} | grep -vc "^#")
+
+    num_ext_before=\$( bedtools intersect -u -b $ext_regions -a \${BEFORE_VCF} | grep -vc "^#")
+    num_ext_after=\$( bedtools intersect -u -b $ext_regions -a \${AFTER_VCF} | grep -vc "^#")
+
+    {
+      echo -e "id\tstep\tregion_type\tnum_before\tnum_after"
+      echo -e "${id}\tfilter_clustered\teasy\t\${num_easy_before}\t\${num_easy_after}"
+      echo -e "${id}\tfilter_clustered\tdiff\t\${num_diff_before}\t\${num_diff_after}"
+      echo -e "${id}\tfilter_clustered\text\t\${num_ext_before}\t\${num_ext_after}"
+    } > ${id}.filter_clustered.regions.tsv
+
 
     num_before=\$(bcftools view -H "\${BEFORE_VCF}" | wc -l | awk '{print \$1}')
     num_after=\$(bcftools view -H "\${AFTER_VCF}"  | wc -l | awk '{print \$1}')

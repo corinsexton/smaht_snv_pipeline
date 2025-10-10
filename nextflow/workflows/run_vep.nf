@@ -51,6 +51,8 @@ Parameters:
 workflow run_vep {
   take:
     inputs
+    regions_input
+
   main:
 
 
@@ -72,7 +74,7 @@ workflow run_vep {
     //mergeVCF(out)
     filter_vep(runVEPonVCF.out, 'mosaic')
 
-    split_snvs_indels(filter_vep.out.vcf)
+    split_snvs_indels(filter_vep.out.vcf, regions_input)
 
   emit:
     split_snvs_indels.out.snvs

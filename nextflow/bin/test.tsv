@@ -1,0 +1,6 @@
+chrom	pos	ref	alt	ST001-1A_BCM_ill_DS300x0.bam__ref_ADF	ST001-1A_BCM_ill_DS300x0.bam__ref_ADR	ST001-1A_BCM_ill_DS300x0.bam__alt_ADF	ST001-1A_BCM_ill_DS300x0.bam__alt_ADR	ST001-1A_all_pacbio.bam__ref_ADF	ST001-1A_all_pacbio.bam__ref_ADR	ST001-1A_all_pacbio.bam__alt_ADF	ST001-1A_all_pacbio.bam__alt_ADR
+chr6	88947751	C	T	5	0	0	1	71	101	0	2
+chr7	145879472	C	A	129	148	3	8	141	105	1	0
+chr14	91557886	C	T	125	111	3	3	82	109	0	0
+chr19	24111580	G	T	158	142	5	4	153	120	0	0
+chr21	45910041	G	A	52	32	0	1	40	80	0	0

@@ -10,16 +10,31 @@
 #SBATCH -o slurm-%x.%j.out
 
 
-#nextflow run main.nf -resume \
-#  --vep_config vep.ini \
-#  --longread_csv truth_sets_lr.csv \
-#  --ont_csv truth_sets_ont.csv \
-#  --shortread_csv truth_sets_sr.csv \
-#  --input_csv truth_sets_small.csv \
-#  --results_dir ./truthset_results 
+nextflow run main.nf \
+  --vep_config vep.ini \
+  --longread_csv truth_sets_lr_pooled.csv \
+  --ont_csv truth_sets_ont_pooled.csv \
+  --shortread_csv truth_sets_sr.csv \
+  --input_csv truth_sets_small.csv \
+  --results_dir ./pooled_truthset_results
+
+nextflow run main.nf \
+  --vep_config vep.ini \
+  --longread_csv truth_sets_lr_pooled.csv \
+  --ont_csv truth_sets_ont_pooled.csv \
+  --shortread_csv truth_sets_sr.csv \
+  --input_csv truth_sets_small_PTA.csv \
+  --results_dir ./pooled_truthset_PTA_results
 
 
-  #--input_csv truth_sets_small_PTA.csv \
+  #--input_csv truth_sets_small.csv \
+  #--results_dir ./truthset_results 
+
+  #--input_csv truth_sets_small.csv \
+  #--results_dir ./truthset_results 
+
+
+  #--input_csv truth_sets_small_PTA_norufus.csv \
   #--results_dir ./truthset_PTA_results
 
 

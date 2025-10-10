@@ -1,7 +1,7 @@
 process phasing_step5 {
 
     publishDir "${params.results_dir}/phasing/step5/intermediate",
-    pattern: "${id}.*.tsv",
+    pattern: "${id}_phasing_tags.tsv.gz",
     mode:'copy'
 
     publishDir "${params.results_dir}/phasing/step5/failed",
@@ -13,7 +13,7 @@ process phasing_step5 {
     mode:'copy'
 
     publishDir "${params.results_dir}/phasing/step5/metrics",
-    pattern: "${id}.phasing.metrics.tsv",
+    pattern: "${id}.phasing.*.tsv",
     mode:'copy'
 
     cpus 1
@@ -29,12 +29,17 @@ process phasing_step5 {
         path(lr_bams), path(lr_bais), 
         path(lr_ont_bams), path(lr_ont_bais),
         path(step4_tsv)
+    tuple path(easy_regions), path(diff_regions), path(ext_regions),
+        path(easy_regions_tbi), path(diff_regions_tbi), path(ext_regions_tbi)
 
 
     output:
     tuple val(id), path("${id}.phased.vcf.gz"), path("${id}.phased.vcf.gz.tbi"),
         path(truth_vcf), path(truth_vcf_tbi), emit: vcf
-    path("${id}.phasing.metrics.tsv"), emit: metrics
+    path("${id}.phasing.metrics.tsv")
+    path("${id}.phasing.regions.tsv")
+    path("${id}_phasing_tags.tsv.gz")
+    path("${id}.phased.fail.vcf.gz")
 
     script:
     """
@@ -48,7 +53,7 @@ process phasing_step5 {
          -Oz -o annotated.vcf.gz ${vcf}
     tabix annotated.vcf.gz
 
-    bcftools view -i '(FILTER="TIER1") || (INFO/PHASING="MOSAIC_PHASED") || (INFO/PHASING="UNABLE_TO_PHASE")' annotated.vcf.gz -Oz -o ${id}.phased.vcf.gz
+    bcftools view -i '(FILTER="TIER2") || (INFO/PHASING="MOSAIC_PHASED") || (INFO/PHASING="UNABLE_TO_PHASE")' annotated.vcf.gz -Oz -o ${id}.phased.vcf.gz
     tabix ${id}.phased.vcf.gz
 
     bcftools view -i '(INFO/PHASING="ARTIFACT") || (INFO/PHASING="GERMLINE")' annotated.vcf.gz -Oz -o ${id}.phased.fail.vcf.gz
@@ -58,6 +63,23 @@ process phasing_step5 {
     # --- metrics (standard schema) ---
     BEFORE_VCF=${vcf}
     AFTER_VCF=${id}.phased.vcf.gz
+    # check regions
+    num_easy_before=\$( bedtools intersect -u -b $easy_regions -a \${BEFORE_VCF} | grep -vc "^#")
+    num_easy_after=\$( bedtools intersect -u -b $easy_regions -a \${AFTER_VCF} | grep -vc "^#")
+
+    num_diff_before=\$( bedtools intersect -u -b $diff_regions -a \${BEFORE_VCF} | grep -vc "^#")
+    num_diff_after=\$( bedtools intersect -u -b $diff_regions -a \${AFTER_VCF} | grep -vc "^#")
+
+    num_ext_before=\$( bedtools intersect -u -b $ext_regions -a \${BEFORE_VCF} | grep -vc "^#")
+    num_ext_after=\$( bedtools intersect -u -b $ext_regions -a \${AFTER_VCF} | grep -vc "^#")
+
+    {
+      echo -e "id\tstep\tregion_type\tnum_before\tnum_after"
+      echo -e "${id}\tphasing\teasy\t\${num_easy_before}\t\${num_easy_after}"
+      echo -e "${id}\tphasing\tdiff\t\${num_diff_before}\t\${num_diff_after}"
+      echo -e "${id}\tphasing\text\t\${num_ext_before}\t\${num_ext_after}"
+    } > ${id}.phasing.regions.tsv
+
 
     num_before=\$(bcftools view -H "\${BEFORE_VCF}" | wc -l | awk '{print \$1}')
     num_after=\$(bcftools view -H "\${AFTER_VCF}"  | wc -l | awk '{print \$1}')

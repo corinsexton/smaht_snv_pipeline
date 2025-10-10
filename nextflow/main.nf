@@ -22,7 +22,11 @@ params.ref_dict             = "/n/data1/hms/dbmi/park-smaht_dac/ref/GRCh38_no_al
 params.segdup_regions = "/home/cos689/smaht/test_benchmarking/smaht_snv_pipeline/nextflow/segdup_GRCh38_official.bed.gz"
 //params.centromere_regions = "/home/cos689/smaht/test_benchmarking/smaht_snv_pipeline/nextflow/centromere.bed"
 params.centromere_regions = "/home/cos689/smaht/test_benchmarking/smaht_snv_pipeline/nextflow/centromeres_GRCh38_official.bed.gz"
-params.max_depth = 300
+params.simple_repeats = "/n/data1/hms/dbmi/park/corinne/smaht/test_benchmarking/smaht_snv_pipeline/nextflow/simple_repeats.bed"
+
+params.easy_regions = "/n/data1/hms/dbmi/park/corinne/smaht/test_benchmarking/smaht_snv_pipeline/nextflow/SMaHT_easy_v2.bed.gz"
+params.diff_regions = "/n/data1/hms/dbmi/park/corinne/smaht/test_benchmarking/smaht_snv_pipeline/nextflow/SMaHT_difficult_v2.bed.gz"
+params.ext_regions = "/n/data1/hms/dbmi/park/corinne/smaht/test_benchmarking/smaht_snv_pipeline/nextflow/SMaHT_extreme_v2.bed.gz"
 
 def ensureTabixIndex(vcf_path) {
     def tbi_path = file("${vcf_path}.tbi")
@@ -48,6 +52,9 @@ def ensureTabixIndex(vcf_path) {
 def poe_fa = file(params.panel_of_errors)
 def poe_fai = file(params.panel_of_errors_index)
 def poe_input = tuple(poe_fa, poe_fai)
+
+def regions_input = tuple(file(params.easy_regions),file(params.diff_regions),file(params.ext_regions),
+                          file(params.easy_regions + ".tbi"),file(params.diff_regions + ".tbi"),file(params.ext_regions + ".tbi"))
 
 def ref_fa = file(params.ref)
 def ref_fai = file(params.ref_index)
@@ -130,7 +137,8 @@ workflow {
         params.ref,
         params.segdup_regions,
         params.centromere_regions,
-        params.max_depth
+        params.simple_repeats,
+        regions_input
     )
 
     // use VEP for AF filtering
@@ -143,12 +151,12 @@ workflow {
                         .set {vep_input}
 
             
-    vep_snvs_out = run_vep(vep_input) // output: id, snv_vcf, snv_tbi
+    vep_snvs_out = run_vep(vep_input, regions_input) // output: id, snv_vcf, snv_tbi
 
     // run pileup and split based on LR presence (tier1) / absence (tier2)
-    tier_split_output = split_tier1_tier2(vep_snvs_out.join(truth_ch), input_bams, ref_input)
+    tier_split_output = split_tier1_tier2(vep_snvs_out.join(truth_ch), input_bams, ref_input, regions_input)
 
-    phasing(tier_split_output,input_bams, ref_input, vep_config)
+    phasing(tier_split_output,input_bams, ref_input, vep_config, regions_input)
 
      // vcf_inputs
   //       bam_inputs

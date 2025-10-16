@@ -65,43 +65,9 @@ def get_pair(info, key):
         except Exception:
             return (0, 0)
 
-def infer_sex(vcf, max_sites=10000):
-    """Infer sex from chrX heterozygosity and chrY presence"""
-    het_x = hom_x = 0
-    y_sites = 0
-    try:
-        for i, rec in enumerate(vcf.fetch("X")):
-            if i > max_sites: break
-            for sample in rec.samples.values():
-                gt = sample.get("GT")
-                if gt is None: continue
-                if gt[0] != gt[1]:
-                    het_x += 1
-                else:
-                    hom_x += 1
-        for i, rec in enumerate(vcf.fetch("Y")):
-            if i > max_sites: break
-            if rec.alts: y_sites += 1
-    except Exception:
-        # If contigs not present, skip
-        pass
-    if het_x > 0.1 * (het_x + hom_x):  # many hets on X
-        return "female"
-    elif y_sites > 10:
-        return "male"
-    else:
-        return "male"  # conservative default
-
-def germline_p0(alt, ref, chrom, sex, err=1e-3):
-    """
-    """
-    return 0.5, 'less'
-
 def main():
     args = parse_args()
     inf = pysam.VariantFile(args.input_vcf)
-    sex = infer_sex(inf)
-    sys.stderr.write(f"[INFO] Inferred sex = {sex}\n")
 
     # Add new INFO fields if missing
     for line in [
@@ -121,12 +87,14 @@ def main():
     header.add_line(f'##fileDate={datetime.now().strftime("%Y%m%d")}')
 
     outf = pysam.VariantFile(args.output_vcf, "w", header=header)
+
+    # failed_variants (for logging purposes)
     outf_failed_sr = pysam.VariantFile(args.output_vcf + '_failed_sr.vcf', "w", header=header)
     outf_failed_both = pysam.VariantFile(args.output_vcf + '_failed_both.vcf', "w", header=header)
     outf_failed_pb = pysam.VariantFile(args.output_vcf + '_failed_pb.vcf', "w", header=header)
     outf_failed_ont = pysam.VariantFile(args.output_vcf + '_failed_ont.vcf', "w", header=header)
 
-    # Counters
+    # Counters (for logging purposes)
     total = non_tier = considered = used_lr = used_sr = 0
     pass_both = fail_strand_only = fail_germ_only = fail_both = 0
     binom_tests_sr = binom_tests_lr = binom_tests_ont = 0
@@ -177,9 +145,11 @@ def main():
         sr_alt_total = sr_adf_alt + sr_adr_alt
         sr_ref_total = sr_adf_ref + sr_adr_ref
         sr_cov = sr_alt_total + sr_ref_total
+
+        p0 = 0.5 # binomial probability
+        alt = 'less' # alternative hypothesis
         if is_tier2:
             if sr_alt_total >= args.min_alt_binom and sr_cov > 0:
-                p0, alt = germline_p0(sr_alt_total, sr_ref_total, rec.chrom, sex)
                 glm_p_sr = binom_pvalue(sr_alt_total, sr_cov, p0, alternative=alt)
                 binom_tests_sr += 1
                 if glm_p_sr > args.germline_alpha_SR:
@@ -190,7 +160,6 @@ def main():
             lr_ref_total = lr_adf_ref + lr_adr_ref
             lr_cov = lr_alt_total + lr_ref_total
             if lr_alt_total >= args.min_alt_binom and lr_cov > 0:
-                p0, alt = germline_p0(lr_alt_total, lr_ref_total, rec.chrom, sex)
                 glm_p_lr = binom_pvalue(lr_alt_total, lr_cov, p0, alternative=alt)
                 binom_tests_lr += 1
                 if glm_p_lr > args.germline_alpha: 
@@ -201,7 +170,6 @@ def main():
             ont_ref_total = ont_adf_ref + ont_adr_ref
             ont_cov = ont_alt_total + ont_ref_total
             if ont_alt_total >= args.min_alt_binom and ont_cov > 0:
-                p0, alt = germline_p0(ont_alt_total, ont_ref_total, rec.chrom, sex)
                 glm_p_ont = binom_pvalue(ont_alt_total, ont_cov, p0, alternative=alt)
                 binom_tests_ont += 1
                 if glm_p_ont > args.germline_alpha: 
@@ -212,11 +180,14 @@ def main():
         glm_candidates = [p for p in [glm_p_sr, glm_p_lr, glm_p_ont] if p is not None]
         glm_p_min = min(glm_candidates) if glm_candidates else None
 
+
+        # for logging only
         if test_failed_sr: outf_failed_sr.write(rec)
         elif test_failed_pb and test_failed_ont: outf_failed_both.write(rec)
         elif test_failed_pb: outf_failed_pb.write(rec)
         elif test_failed_ont: outf_failed_ont.write(rec)
 
+        # output the p value for every test.
         if strand_ok and germline_ok:
             pass_both += 1
             rec.info["SB_P"] = float(sb_p)
@@ -238,7 +209,7 @@ def main():
     outf_failed_ont.close()
     inf.close()
 
-    # Summary
+    # Summary logging
     summary_lines = [
         f"Input variants:                 {total}",
         f"Dropped (non-tier):             {non_tier}",
@@ -252,7 +223,7 @@ def main():
         f"Failed strand only:             {fail_strand_only}",
         f"Failed germline only:           {fail_germ_only}",
         f"Failed both:                    {fail_both}",
-        f"Parameters: strand_alpha={args.strand_alpha}, germline_alpha={args.germline_alpha}, min_lr_alt={args.min_lr_alt}, min_alt_binom={args.min_alt_binom}, inferred_sex={sex}",
+        f"Parameters: strand_alpha={args.strand_alpha}, germline_alpha={args.germline_alpha}, min_lr_alt={args.min_lr_alt}, min_alt_binom={args.min_alt_binom}",
     ]
     msg = "\n".join(summary_lines) + "\n"
     sys.stderr.write(msg)

@@ -6,7 +6,7 @@ process phasing_step1 {
 
     cpus 4
     memory '6G'
-    time '1h'
+    time '2h'
 
     tag "$id"
 

@@ -71,7 +71,7 @@ def parse_cram_csv(csv_path) {
             def id = row.id
             def fields = row.values().drop(1)
             if (fields.size() % 2 != 0) {
-                throw new IllegalArgumentException("Row for ${id} has an odd number of cram/crai entries")
+                throw new IllegalArgumentException("Row for ${id} has an odd number of cram/crai entries ${csv_path}")
             }
             def crams = (0..<fields.size()/2).collect { i -> file(fields[2*i].trim()) }
             def crais = (0..<fields.size()/2).collect { i -> file(fields[2*i+1].trim()) }

@@ -44,6 +44,8 @@ def parse_args():
                     help="Keep if Fisher p >= this (default: 0.01)")
     ap.add_argument("--germline_alpha", type=float, default=0.01,
                     help="Keep if Binomial p < this (default: 0.01)")
+    ap.add_argument("--germline_alpha_SR", type=float, default=0.01,
+                    help="Keep if Binomial p < this (only SR)(default: 0.01)")
     ap.add_argument("--min_lr_alt", type=int, default=2,
                     help="Min LR ALT reads to use LR for the strand test (default: 2)")
     ap.add_argument("--min_alt_binom", type=int, default=1,
@@ -180,7 +182,7 @@ def main():
                 p0, alt = germline_p0(sr_alt_total, sr_ref_total, rec.chrom, sex)
                 glm_p_sr = binom_pvalue(sr_alt_total, sr_cov, p0, alternative=alt)
                 binom_tests_sr += 1
-                if glm_p_sr > args.germline_alpha:
+                if glm_p_sr > args.germline_alpha_SR:
                     test_failed = True
                     test_failed_sr = True
 

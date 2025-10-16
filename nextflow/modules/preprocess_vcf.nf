@@ -48,14 +48,14 @@ process preprocess_vcf {
     num_after=\$(bcftools view -H "\${AFTER_VCF}"  | wc -l | awk '{print \$1}')
 
     ## check regions
-    #num_easy_before=\$( bedtools intersect -u -b $easy_regions -a \${BEFORE_VCF} | grep -vc "^#")
-    #num_easy_after=\$( bedtools intersect -u -b $easy_regions -a \${AFTER_VCF} | grep -vc "^#")
+    #num_easy_before=\$( bedtools intersect -u -b $easy_regions -a \${BEFORE_VCF} | grep -v "^#" | wc -l | awk '{print \$1}')
+    #num_easy_after=\$( bedtools intersect -u -b $easy_regions -a \${AFTER_VCF} | grep -v "^#" | wc -l | awk '{print \$1}')
 
-    #num_diff_before=\$( bedtools intersect -u -b $diff_regions -a \${BEFORE_VCF} | grep -vc "^#")
-    #num_diff_after=\$( bedtools intersect -u -b $diff_regions -a \${AFTER_VCF} | grep -vc "^#")
+    #num_diff_before=\$( bedtools intersect -u -b $diff_regions -a \${BEFORE_VCF} | grep -v "^#" | wc -l | awk '{print \$1}')
+    #num_diff_after=\$( bedtools intersect -u -b $diff_regions -a \${AFTER_VCF} | grep -v "^#" | wc -l | awk '{print \$1}')
 
-    #num_ext_before=\$( bedtools intersect -u -b $ext_regions -a \${BEFORE_VCF} | grep -vc "^#")
-    #num_ext_after=\$( bedtools intersect -u -b $ext_regions -a \${AFTER_VCF} | grep -vc "^#")
+    #num_ext_before=\$( bedtools intersect -u -b $ext_regions -a \${BEFORE_VCF} | grep -v "^#" | wc -l | awk '{print \$1}')
+    #num_ext_after=\$( bedtools intersect -u -b $ext_regions -a \${AFTER_VCF} | grep -v "^#" | wc -l | awk '{print \$1}')
 
     #{
     #  echo -e "id\tstep\tregion_type\tnum_before\tnum_after"

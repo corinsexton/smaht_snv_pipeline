@@ -33,6 +33,7 @@ process tier_variants {
     output:
     tuple val(id), path("${id}.tiered.vcf.gz"), path("${id}.tiered.vcf.gz.tbi"),path(truth_vcf), path(truth_vcf_tbi), emit: vcf
     path("${id}.tier.metrics.tsv"), emit: metrics
+    path("${id}.parsed.minipileup.tsv")
 
     script:
     """

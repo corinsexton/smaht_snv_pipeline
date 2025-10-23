@@ -23,6 +23,7 @@ params.segdup_regions = "/home/cos689/smaht/test_benchmarking/smaht_snv_pipeline
 //params.centromere_regions = "/home/cos689/smaht/test_benchmarking/smaht_snv_pipeline/nextflow/centromere.bed"
 params.centromere_regions = "/home/cos689/smaht/test_benchmarking/smaht_snv_pipeline/nextflow/centromeres_GRCh38_official.bed.gz"
 params.simple_repeats = "/n/data1/hms/dbmi/park/corinne/smaht/test_benchmarking/smaht_snv_pipeline/nextflow/simple_repeats.bed"
+params.kg_indels = "/n/data1/hms/dbmi/park/corinne/ref/mills_1kg_gold_standard_indels.vcf.gz"
 
 params.easy_regions = "/n/data1/hms/dbmi/park/corinne/smaht/test_benchmarking/smaht_snv_pipeline/nextflow/SMaHT_easy_v2.bed.gz"
 params.diff_regions = "/n/data1/hms/dbmi/park/corinne/smaht/test_benchmarking/smaht_snv_pipeline/nextflow/SMaHT_difficult_v2.bed.gz"
@@ -138,6 +139,7 @@ workflow {
         params.segdup_regions,
         params.centromere_regions,
         params.simple_repeats,
+        params.kg_indels,
         regions_input
     )
 

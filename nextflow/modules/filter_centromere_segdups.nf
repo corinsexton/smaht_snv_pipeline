@@ -21,6 +21,7 @@ process filter_centromere_segdups {
     path ucsc_regions
     path centromere_regions
     path simple_repeat_regions 
+    path kg_indels
     tuple path(easy_regions), path(diff_regions), path(ext_regions),
         path(easy_regions_tbi), path(diff_regions_tbi), path(ext_regions_tbi)
 
@@ -41,6 +42,18 @@ process filter_centromere_segdups {
 
     mv filtered.vcf.gz ${id}.filtered.vcf.gz
     tabix -f ${id}.filtered.vcf.gz
+
+    # Expand 1kg indels by ±5 bp and filter filtered.vcf.gz
+    bcftools query -f'%CHROM\t%POS0\t%END\n' ${kg_indels} \
+      | awk -v OFS='\t' -v s=5 '{start=\$2-s; if(start<0) start=0; end=\$3+s; print \$1,start,end}' \
+      | bedtools merge -i - > 1kg.slop5.bed
+    
+    # Now exclude filtered.vcf.gz variants that fall in those regions
+    bcftools view -T ^1kg.slop5.bed -Ob -o filtered.vcf.gz ${id}.filtered.vcf.gz
+
+    mv filtered.vcf.gz ${id}.filtered.vcf.gz
+    tabix -f ${id}.filtered.vcf.gz
+
 
 
     # --- metrics (standard schema) ---

@@ -24,6 +24,7 @@ workflow preprocess_and_filter_poe {
         segdup_regions
         centromere_regions
         simple_repeat_regions
+        kg_indels
         regions_input
 
     main: 
@@ -37,7 +38,7 @@ workflow preprocess_and_filter_poe {
 
 
     // Step 2: Add POE + its index to each tuple
-    filter_centromere_segdups(preprocess_vcf.out.vcf,segdup_regions,centromere_regions,simple_repeat_regions,regions_input)
+    filter_centromere_segdups(preprocess_vcf.out.vcf,segdup_regions,centromere_regions,simple_repeat_regions,kg_indels,regions_input)
     filter_poe(filter_centromere_segdups.out.vcf,panel_of_errors_fa,regions_input)
     filter_clustered_variants(filter_poe.out.vcf,regions_input)
 

@@ -12,14 +12,14 @@ process phasing_step4 {
 
     input:
     tuple val(id), path(vcf), path(tbi),
-        path(truth_vcf), path(truth_vcf_tbi)
-    path(windows_bed)
+        path(truth_vcf), path(truth_vcf_tbi),
+        path(germline_vcf), path(germline_tbi)
 
     output:
     tuple val(id), path("${id}.germline_map.tsv")
 
     script:
     """
-    phasing_step4.sh -s $id -v $vcf -w $windows_bed
+    phasing_step4.sh -s $id -v $germline_vcf -w $vcf
     """
 }

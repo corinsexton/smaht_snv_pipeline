@@ -16,9 +16,9 @@ process phasing_step5 {
     pattern: "${id}.phasing.*.tsv",
     mode:'copy'
 
-    cpus 1
-    memory '2G'
-    time '1h'
+    cpus 8
+    memory '8G'
+    time '12h'
 
     tag "$id"
 
@@ -43,7 +43,7 @@ process phasing_step5 {
 
     script:
     """
-    phasing_step5.py -t ${step4_tsv} -b ${lr_bams} -s 'male' -i ${id}
+    phasing_step5.py -w 8 -t ${step4_tsv} -b ${lr_bams} -s 'male' -i ${id}
 
     sort -k1,1V -k2,2n ${id}_phasing_tags.tsv | bgzip - -o ${id}_phasing_tags.tsv.gz
     tabix -s1 -b2 -e2 ${id}_phasing_tags.tsv.gz

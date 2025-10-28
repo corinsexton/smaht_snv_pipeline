@@ -107,18 +107,6 @@ def input_vcfs = Channel
         tuple(id, vcf, tbi)
     }
 
-//def input_bams = Channel
-//    .fromPath(params.input_csv)
-//    .splitCsv(header: true)
-//    .map { row ->
-//        def id = row.id
-//        def bam = file(row.bam)
-//        def bai = file(row.bai)
-//        def lr_bam = file(row.lr_bam)
-//        def lr_bai = file(row.lr_bai)
-//        tuple(id,bam,bai,lr_bam,lr_bai)
-//    }
-
 def truth_ch = Channel
     .fromPath(params.input_csv)
     .splitCsv(header: true)
@@ -128,6 +116,17 @@ def truth_ch = Channel
         def truth_tbi = row.truth_vcf ? file(row.truth_vcf + '.tbi') : file("none.vcf.tbi")
         tuple(id, truth_vcf, truth_tbi)
     }
+
+def germline_calls_ch = Channel
+    .fromPath(params.input_csv)
+    .splitCsv(header: true)
+    .map{ row ->
+        def id = row.id
+        def germline_vcf = row.germline_calls
+        def germline_tbi = file(row.germline_calls + '.tbi')
+        tuple(id, germline_vcf, germline_tbi)
+    }
+
 
 workflow {
 
@@ -158,7 +157,7 @@ workflow {
     // run pileup and split based on LR presence (tier1) / absence (tier2)
     tier_split_output = split_tier1_tier2(vep_snvs_out.join(truth_ch), input_bams, ref_input, regions_input)
 
-    phasing(tier_split_output,input_bams, ref_input, vep_config, regions_input)
+    phasing(tier_split_output,germline_calls_ch, input_bams, ref_input, vep_config, regions_input)
 
      // vcf_inputs
   //       bam_inputs

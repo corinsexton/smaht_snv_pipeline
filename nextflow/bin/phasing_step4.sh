@@ -9,68 +9,93 @@ set -euo pipefail
 # ---------------------------------------------------------------
 
 usage() {
-  echo "Usage: phasing_step4.sh -s sample -v pass.vcf.gz -w tier1_windows.bed"
+  echo "Usage: phasing_step4.sh -s sample -v pass.vcf.gz -w somatic.vcf.gz"
 }
 
 while getopts ":s:v:w:" opt; do
   case $opt in
 	s) SAMPLE=$OPTARG ;;
-    v) PASS_VCF=$OPTARG ;;
-    w) WIN_BED=$OPTARG ;;
+    v) GERMLINE_VCF=$OPTARG ;;
+    w) SOMATIC_VCF=$OPTARG ;;
     *) usage; exit 1 ;;
   esac
 done
 
 
-[[ -z ${PASS_VCF-} || -z ${WIN_BED-} ]] && { usage; exit 1; }
+[[ -z ${SAMPLE-} || -z ${GERMLINE_VCF-} || -z ${SOMATIC_VCF-} ]] && usage
 
-PASS_BED="${SAMPLE}.germline.pass.bed"
+# ---- File paths ----
+TIER1_VCF="tier1.norm.vcf.gz"
 SOMATIC_BED="${SAMPLE}.somatic_sites.bed"
+SOMATIC_5KB="${SAMPLE}.somatic_5kb.bed"
+GERM_SUBVCF="${SAMPLE}.germline.subset.vcf.gz"
+GERM_BED="${SAMPLE}.germline.subset.bed"
 CLOSEST="${SAMPLE}.closest.tsv"
 MAP_TSV="${SAMPLE}.germline_map.tsv"
 FAILED_TSV="${SAMPLE}.no_close_germline.tsv"
 
-echo "[Step4] Converting filtered germline VCF to BED..."
-bcftools query -f '%CHROM\t%POS0\t%POS\t%REF\t%ALT\n' "$PASS_VCF" > "$PASS_BED"
+# ---- 1. Extract somatic TIER1 variants ----
+echo "[Step4] Extracting TIER1 somatic variants..."
+bcftools view -i 'FILTER=="TIER1"' -Oz -o "$TIER1_VCF" "$SOMATIC_VCF"
+tabix -f "$TIER1_VCF"
 
-echo "[Step4] Generating 1bp BED for somatic sites..."
-awk 'BEGIN{OFS="\t"}{print $1,$5-1,$5,$5,$6,$7}' "$WIN_BED" > "$SOMATIC_BED"
+# ---- 2. Convert TIER1 VCF to BED ----
+bcftools query -f'%CHROM\t%POS0\t%POS\t%REF\t%ALT\n' "$TIER1_VCF" \
+  | sort -k1,1 -k2,2n -S1G > "$SOMATIC_BED"
 
-bedtools sort -i "$PASS_BED" > z; mv z "$PASS_BED"
-bedtools sort -i "$SOMATIC_BED" > z; mv z "$SOMATIC_BED"
+# ---- 3. Make ±5 kb windows around TIER1 variants ----
+awk 'BEGIN{OFS="\t"}{s=$2-5000; if(s<0)s=0; e=$3+5000; print $1,s,e}' "$SOMATIC_BED" \
+  | bedtools merge -i - > "$SOMATIC_5KB"
 
-echo "[Step4] Finding closest germline variant to each somatic site..."
-bedtools closest -a "$SOMATIC_BED" -b "$PASS_BED" -d | awk '$12 != -1 && $12 <= 5000' > "$CLOSEST"
+# ---- 4. Subset germline VCF to these regions ----
+echo "[Step4] Subsetting germline VCF to ±5 kb around TIER1 sites..."
+bcftools view  -v snps -R "$SOMATIC_5KB" -Oz -o "$GERM_SUBVCF" "$GERMLINE_VCF"
+tabix -f "$GERM_SUBVCF"
 
-# Handle somatic variants with no germline within 5kb
-echo "[Step4] Identifying somatic sites with no germline within 5kb..."
-bedtools closest -a "$SOMATIC_BED" -b "$PASS_BED" -d | awk '$12 == -1 || $12 > 5000' > "$FAILED_TSV"
+# ---- 5. Convert subsetted germline VCF to BED ----
+bcftools query -f'%CHROM\t%POS0\t%POS\t%REF\t%ALT\n' "$GERM_SUBVCF" \
+  | sort -k1,1 -k2,2n -S1G > "$GERM_BED"
 
-# Process passing (within 5kb) and failing (>5kb) separately, then combine
+# Step 6a. Exclude identical variants from the germline subset
+awk 'NR==FNR{a[$1":"$3":"$4":"$5]; next}
+     !($1":"$3":"$4":"$5 in a)' "$SOMATIC_BED" "$GERM_BED" > "${GERM_BED%.bed}.filtered.bed"
+
+# Step 6b. Find closest (now guaranteed non-identical)
+bedtools closest -a "$SOMATIC_BED" -b "${GERM_BED%.bed}.filtered.bed" -d > "$CLOSEST"
+
+# ---- 7. Split pass / fail by distance ----
+echo "[Step4] Splitting results into within-5kb and failed variants..."
+awk '$12 != -1 && $12 <= 5000' "$CLOSEST" > tmp.pass.tsv
+awk '$12 == -1 || $12 > 5000' "$CLOSEST" > "$FAILED_TSV"
+
+# ---- 8. Format outputs ----
 awk '
 BEGIN {OFS="\t"}
 {
-  var_chrom=$1; var_pos=$4; var_ref=$5; var_alt=$6;
-  germ_pos=$8+1; germ_ref=$10; germ_alt=$11;
+  var_chrom=$1; var_pos=$3; var_ref=$4; var_alt=$5;
+  germ_pos=$8; germ_ref=$9; germ_alt=$10;
   if (germ_ref == "" || germ_ref == ".") {
     germ_pos="NA"; germ_ref="NA"; germ_alt="NA";
   }
   print var_chrom, var_pos, var_ref, var_alt, germ_pos, germ_ref, germ_alt;
-}' "$CLOSEST" | sort -k1,1 -k2,2n > tmp.pass.tsv
+}' tmp.pass.tsv | sort -k1,1 -k2,2n -S1G > tmp.pass.clean.tsv
 
 awk '
 BEGIN {OFS="\t"}
 {
-  var_chrom=$1; var_pos=$4; var_ref=$5; var_alt=$6;
+  var_chrom=$1; var_pos=$3; var_ref=$4; var_alt=$5;
   print var_chrom, var_pos, var_ref, var_alt, "NA", "NA", "NA";
-}' "$FAILED_TSV" | sort -k1,1 -k2,2n > tmp.fail.tsv
+}' "$FAILED_TSV" | sort -k1,1 -k2,2n -S1G > tmp.fail.clean.tsv
 
+# ---- 9. Combine and finalize ----
 {
   echo -e "chrom\tVar_pos\tVar_ref\tVar_alt\tGerm_pos\tGerm_ref\tGerm_alt"
-  cat tmp.pass.tsv tmp.fail.tsv
+  cat tmp.pass.clean.tsv tmp.fail.clean.tsv
 } > "$MAP_TSV"
 
-rm -f tmp.pass.tsv tmp.fail.tsv
+rm -f tmp.pass.tsv tmp.pass.clean.tsv tmp.fail.clean.tsv
 
-echo "[Step4 complete] Final mapping written to $MAP_TSV (within ±5kb only)"
-
+echo "[Step4 complete]"
+echo "  Mapped variants  : $MAP_TSV"
+echo "  No close germline: $FAILED_TSV"
+echo "  Germline subset  : $GERM_SUBVCF (±5 kb windows)"

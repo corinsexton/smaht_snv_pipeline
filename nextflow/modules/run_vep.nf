@@ -22,6 +22,8 @@ process runVEP {
     pattern: "${out}*",
     mode: 'copy'
   
+  cache 'lenient'
+
   label 'vep'
 
   input:
@@ -58,5 +60,6 @@ process runVEP {
 
   bgzip ${out}
   tabix ${tabix_arg} ${out}.gz
+
   """
 }

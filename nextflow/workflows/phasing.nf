@@ -11,6 +11,7 @@ workflow phasing {
 
     take:
         vcf_inputs
+        germline_inputs
         bam_inputs
         ref_input
         vep_config
@@ -25,23 +26,23 @@ workflow phasing {
       }
       .set { vcf_bam_channel }
 
-    phasing_step1(vcf_bam_channel,ref_input)
+   //phasing_step1(vcf_bam_channel,ref_input)
 
 
-   // use VEP for AF filtering
-   phasing_step1.out.vcf.combine( vep_config )
-                       .map {
-                             id, vcf, tbi, truth_vcf, truth_tbi, config ->
-                              [id: id, file: vcf, index: tbi, truth_vcf:truth_vcf, truth_tbi:truth_tbi, vep_config: config]
-                            }
-                       .set {vep_input}
+   //// use VEP for AF filtering
+   //phasing_step1.out.vcf.combine( vep_config )
+   //                    .map {
+   //                          id, vcf, tbi, truth_vcf, truth_tbi, config ->
+   //                           [id: id, file: vcf, index: tbi, truth_vcf:truth_vcf, truth_tbi:truth_tbi, vep_config: config]
+   //                         }
+   //                    .set {vep_input}
 
 
-   // run and filter with vep
-   runVEP(vep_input,'germline')
-   filter_vep(runVEP.out,'germline')
+   //// run and filter with vep
+   //runVEP(vep_input,'germline')
+   //filter_vep(runVEP.out,'germline')
 
-   phasing_step4(filter_vep.out.vcf, phasing_step1.out.window_bed)
+   phasing_step4(vcf_inputs.join(germline_inputs))
 
    vcf_inputs
       .join(bam_inputs)     // join on 'id'

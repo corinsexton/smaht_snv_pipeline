@@ -30,5 +30,6 @@ workflow split_tier1_tier2 {
     filter_binom_fisher(tier_variants.out.vcf, regions_input)
 
     emit:
+    //filter_binom_fisher.out.vcf
     filter_binom_fisher.out.vcf
 }

@@ -4,6 +4,10 @@ process phasing_step5 {
     pattern: "${id}_phasing_tags.tsv.gz",
     mode:'copy'
 
+    publishDir "${params.results_dir}/phasing/step5/intermediate",
+    pattern: "${id}.read_counts.phasing.tsv",
+    mode:'copy'
+
     publishDir "${params.results_dir}/phasing/step5/failed",
     pattern: "${id}.phased.fail.vcf.gz*",
     mode:'copy'
@@ -16,8 +20,8 @@ process phasing_step5 {
     pattern: "${id}.phasing.*.tsv",
     mode:'copy'
 
-    cpus 8
-    memory '8G'
+    cpus 20
+    memory '16G'
     time '12h'
 
     tag "$id"
@@ -28,7 +32,7 @@ process phasing_step5 {
         path(sr_bams), path(sr_bais), 
         path(lr_bams), path(lr_bais), 
         path(lr_ont_bams), path(lr_ont_bais),
-        path(step4_tsv)
+        path(step4_tsv), val(sex)
     tuple path(easy_regions), path(diff_regions), path(ext_regions),
         path(easy_regions_tbi), path(diff_regions_tbi), path(ext_regions_tbi)
 
@@ -40,10 +44,11 @@ process phasing_step5 {
     path("${id}.phasing.regions.tsv")
     path("${id}_phasing_tags.tsv.gz")
     path("${id}.phased.fail.vcf.gz")
+    path("${id}.read_counts.phasing.tsv")
 
     script:
     """
-    phasing_step5.py -w 8 -t ${step4_tsv} -b ${lr_bams} -s 'male' -i ${id}
+    phasing_step5.py -w 8 -t ${step4_tsv} -b ${lr_bams} -s ${sex} -i ${id}
 
     sort -k1,1V -k2,2n ${id}_phasing_tags.tsv | bgzip - -o ${id}_phasing_tags.tsv.gz
     tabix -s1 -b2 -e2 ${id}_phasing_tags.tsv.gz

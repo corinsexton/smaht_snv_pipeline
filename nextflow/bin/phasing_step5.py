@@ -77,7 +77,12 @@ def classify_row(row, bam_paths, sex):
         if sex == "male":
             # Haploid X/Y in males
             if chrom in ["chrX", "chrY"]:
-                row["hap_classification"] = "no_coverage" if total_reads == 0 else "haploid"
+                if case_both > 1 and case_germ_only > 1 and case_none <= 1 and case_var_only <= 1: # 2 haplo
+                    row["hap_classification"] = "mosaic"
+                if case_both > 1 and case_germ_only <= 1 and case_none <= 1 and case_var_only <= 1: # 1 haplo
+                    row["hap_classification"] = "germline"
+                else: # 3+ haplo
+                    row["hap_classification"] = "artifact"
                 return row
 
         elif sex == "female":
@@ -93,17 +98,17 @@ def classify_row(row, bam_paths, sex):
                 return row
 
         # Diploid classification logic
-        if case_both > 1 and case_none > 1 and case_var_only <= 1 and case_germ_only <= 1:
+        if case_both > 1 and case_none > 1 and case_var_only <= 1 and case_germ_only <= 1: # 2 haplo
             row["hap_classification"] = "germline"
-        elif case_both <= 1 and case_none <= 1 and case_var_only > 1 and case_germ_only > 1:
+        elif case_both <= 1 and case_none <= 1 and case_var_only > 1 and case_germ_only > 1: # 2 haplo
             row["hap_classification"] = "germline"
-        elif case_both > 1 and case_none > 1 and case_germ_only > 1 and case_var_only <= 1:
+        elif case_both > 1 and case_none > 1 and case_germ_only > 1 and case_var_only <= 1: # 3 haplo
             row["hap_classification"] = "mosaic"
-        elif case_both <= 1 and case_none > 1 and case_var_only > 1 and case_germ_only > 1:
+        elif case_both <= 1 and case_none > 1 and case_var_only > 1 and case_germ_only > 1: # 3 haplo
             row["hap_classification"] = "mosaic"
-        elif case_both <= 1 and case_var_only <= 1:
+        elif case_both <= 1 and case_var_only <= 1: # no var reads
             row["hap_classification"] = "artifact"
-        else:
+        else: # 1 or 4+ haplo
             row["hap_classification"] = "artifact"
 
         return row
@@ -216,6 +221,32 @@ def main():
 
     # Write phasing tags
     phasing_path = write_phasing_tags(results_buffer, args.id)
+
+
+        # --- Write debug intermediate file ---
+    debug_tsv = f"{args.id}.read_counts.phasing.tsv"
+    debug_fields = [
+        "chrom", "Var_pos", "Var_alt", "hap_classification",
+        "case_both", "case_none", "case_var_only", "case_germ_only"
+    ]
+    with open(debug_tsv, "w", newline="") as f_debug:
+        writer = csv.DictWriter(f_debug, fieldnames=debug_fields, delimiter="\t")
+        writer.writeheader()
+        for row in results_buffer:
+            # Default 0 for missing values to avoid KeyErrors
+            writer.writerow({
+                "chrom": row.get("chrom", ""),
+                "Var_pos": row.get("Var_pos", ""),
+                "Var_alt": row.get("Var_alt", ""),
+                "hap_classification": row.get("hap_classification", ""),
+                "case_both": row.get("case_both", 0),
+                "case_none": row.get("case_none", 0),
+                "case_var_only": row.get("case_var_only", 0),
+                "case_germ_only": row.get("case_germ_only", 0)
+            })
+
+    print(f"[Done] Debug read count file: {debug_tsv}")
+
 
     print(f"[Done] Classification TSV: {out_tsv}")
     print(f"[Done] Phasing tags TSV: {phasing_path}")

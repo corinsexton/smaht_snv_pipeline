@@ -16,6 +16,7 @@ workflow phasing {
         ref_input
         vep_config
         regions_input
+        sex_ch
 
     main: 
     // Step 1: run minipileup to get counts in SR and LR
@@ -51,6 +52,9 @@ workflow phasing {
       }.join(phasing_step4.out)
       .map { id, vcf, tbi, truth_vcf, truth_vcf_tbi, sr_bams, sr_bais, lr_bams, lr_bais, lr_ont_bams, lr_ont_bais, step4_tsv ->
         tuple(id, vcf, tbi, truth_vcf, truth_vcf_tbi, sr_bams, sr_bais, lr_bams, lr_bais, lr_ont_bams, lr_ont_bais, step4_tsv)
+      }.join(sex_ch)
+      .map { id, vcf, tbi, truth_vcf, truth_vcf_tbi, sr_bams, sr_bais, lr_bams, lr_bais, lr_ont_bams, lr_ont_bais, step4_tsv, sex ->
+        tuple(id, vcf, tbi, truth_vcf, truth_vcf_tbi, sr_bams, sr_bais, lr_bams, lr_bais, lr_ont_bams, lr_ont_bais, step4_tsv, sex )
       }
       .set { step5_input }
 

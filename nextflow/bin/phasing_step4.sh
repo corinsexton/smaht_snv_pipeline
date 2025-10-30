@@ -49,7 +49,12 @@ awk 'BEGIN{OFS="\t"}{s=$2-5000; if(s<0)s=0; e=$3+5000; print $1,s,e}' "$SOMATIC_
 
 # ---- 4. Subset germline VCF to these regions ----
 echo "[Step4] Subsetting germline VCF to ±5 kb around TIER1 sites..."
-bcftools view  -v snps -R "$SOMATIC_5KB" -Oz -o "$GERM_SUBVCF" "$GERMLINE_VCF"
+bcftools view \
+  -v snps \
+  -R "$SOMATIC_5KB" \
+  -i 'GT~"0[|/]1" || GT~"1[|/]0"' \
+  -Oz -o "$GERM_SUBVCF" "$GERMLINE_VCF"
+
 tabix -f "$GERM_SUBVCF"
 
 # ---- 5. Convert subsetted germline VCF to BED ----

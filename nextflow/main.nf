@@ -8,19 +8,13 @@ include { run_vep } from './workflows/run_vep'
 include { split_tier1_tier2 } from './workflows/split_tier1_tier2.nf'
 include { phasing } from './workflows/phasing.nf'
 
-//params.input_csv       = "./mt_calls.csv"
-//params.input_csv       = "./150x_files_ALL.csv"
-//params.input_csv       = "./150x_files.csv"
-//params.input_csv       = "./150x_files_w_bams.csv"
 params.panel_of_errors = "/n/data1/hms/dbmi/park/corinne/smaht/test_benchmarking/smaht_snv_pipeline/panel_of_errors/PON.q20q20.05.5.fa.gz"
 params.panel_of_errors_index  = "/n/data1/hms/dbmi/park/corinne/smaht/test_benchmarking/smaht_snv_pipeline/panel_of_errors/PON.q20q20.05.5.fa.gz.fai"
 params.results_dir     = "./new_results"
 params.ref             = "/n/data1/hms/dbmi/park-smaht_dac/ref/GRCh38_no_alt/hg38_no_alt.fa"
 params.ref_index             = "/n/data1/hms/dbmi/park-smaht_dac/ref/GRCh38_no_alt/hg38_no_alt.fa.fai"
 params.ref_dict             = "/n/data1/hms/dbmi/park-smaht_dac/ref/GRCh38_no_alt/hg38_no_alt.dict"
-//params.segdup_regions = "/n/data1/hms/dbmi/park/SOFTWARE/UCSC/GRCh38_UCSC_SegDup.formatted.bed"
 params.segdup_regions = "/home/cos689/smaht/test_benchmarking/smaht_snv_pipeline/nextflow/segdup_GRCh38_official.bed.gz"
-//params.centromere_regions = "/home/cos689/smaht/test_benchmarking/smaht_snv_pipeline/nextflow/centromere.bed"
 params.centromere_regions = "/home/cos689/smaht/test_benchmarking/smaht_snv_pipeline/nextflow/centromeres_GRCh38_official.bed.gz"
 params.simple_repeats = "/n/data1/hms/dbmi/park/corinne/smaht/test_benchmarking/smaht_snv_pipeline/nextflow/simple_repeats.bed"
 params.kg_indels = "/n/data1/hms/dbmi/park/corinne/ref/mills_1kg_gold_standard_indels.vcf.gz"
@@ -67,15 +61,25 @@ def ref_input = tuple(ref_fa, ref_fai, ref_dict)
 def parse_cram_csv(csv_path) {
     Channel
         .fromPath(csv_path)
-        .splitCsv(header: true)
+        .splitCsv(header: false)
+        .filter { row ->
+            // Skip header line if first column starts with 'id' (case-insensitive)
+            !(row[0]?.toString()?.toLowerCase()?.startsWith('id'))
+        }
         .map { row ->
-            def id = row.id
-            def fields = row.values().drop(1)
+            // row is now a List of values, not a Map
+            def id = row[0].toString().trim()
+            def fields = row.drop(1).findAll { it && it.trim() }
+
+            // Sanity check: ensure pairs of CRAM and CRAI
             if (fields.size() % 2 != 0) {
-                throw new IllegalArgumentException("Row for ${id} has an odd number of cram/crai entries ${csv_path}")
+                log.warn "Row for ${id} has an odd number of CRAM/CRAI entries in ${csv_path} (${fields.size()})"
             }
+
             def crams = (0..<fields.size()/2).collect { i -> file(fields[2*i].trim()) }
             def crais = (0..<fields.size()/2).collect { i -> file(fields[2*i+1].trim()) }
+
+            //log.info "Parsed ${crams.size()} CRAM/CRAI pairs for ${id}"
             tuple(id, crams, crais)
         }
 }
@@ -127,6 +131,15 @@ def germline_calls_ch = Channel
         tuple(id, germline_vcf, germline_tbi)
     }
 
+def sex_ch = Channel
+    .fromPath(params.input_csv)
+    .splitCsv(header: true)
+    .map{ row ->
+        def id = row.id
+        def sex = row.sex
+        tuple(id, sex)
+    }
+
 
 workflow {
 
@@ -157,7 +170,7 @@ workflow {
     // run pileup and split based on LR presence (tier1) / absence (tier2)
     tier_split_output = split_tier1_tier2(vep_snvs_out.join(truth_ch), input_bams, ref_input, regions_input)
 
-    phasing(tier_split_output,germline_calls_ch, input_bams, ref_input, vep_config, regions_input)
+    phasing(tier_split_output, germline_calls_ch, input_bams, ref_input, vep_config, regions_input, sex_ch)
 
      // vcf_inputs
   //       bam_inputs

@@ -3,7 +3,7 @@
 
 process preprocess_vcf {
     cpus 1
-    memory '2G'
+    memory '4G'
     time '30m'
 
     publishDir "${params.results_dir}/pass_filtered",

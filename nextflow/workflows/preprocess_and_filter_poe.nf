@@ -43,5 +43,5 @@ workflow preprocess_and_filter_poe {
     filter_poe(filter_centromere_segdups.out.vcf,panel_of_errors_fa,regions_input)
 
     emit:
-    filter_clustered_variants.out.vcf
+    filter_poe.out.vcf
 }

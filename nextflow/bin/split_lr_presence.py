@@ -18,7 +18,7 @@ import math
 
 def get_read_cutoffs(short_cov: int, long_cov: int,
                      error_rate: float = 0.001,
-                     target_p: float = 1e-3):
+                     target_p: float = 1e-2):
     """
     Compute read count cutoffs for short, long, and combined coverage
     using Poisson approximation to the binomial distribution.
@@ -32,7 +32,7 @@ def get_read_cutoffs(short_cov: int, long_cov: int,
     error_rate : float, optional
         Sequencing error rate (default = 0.001)
     target_p : float, optional
-        Target probability for random error (default = 1e-3)
+        Target probability for random error (default = 1e-2)
 
     Returns
     -------

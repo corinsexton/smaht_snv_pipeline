@@ -70,8 +70,8 @@ bedtools closest -a "$SOMATIC_BED" -b "${GERM_BED%.bed}.filtered.bed" -d > "$CLO
 
 # ---- 7. Split pass / fail by distance ----
 echo "[Step4] Splitting results into within-5kb and failed variants..."
-awk '$12 != -1 && $12 <= 5000' "$CLOSEST" > tmp.pass.tsv
-awk '$12 == -1 || $12 > 5000' "$CLOSEST" > "$FAILED_TSV"
+awk '$11 != -1 && $11 <= 5000' "$CLOSEST" > tmp.pass.tsv
+awk '$11 == -1 || $11 > 5000' "$CLOSEST" > "$FAILED_TSV"
 
 # ---- 8. Format outputs ----
 awk '

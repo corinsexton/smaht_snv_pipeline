@@ -7,7 +7,7 @@ process filter_run_minipileup {
     cache 'lenient'
 
 
-    cpus 16
+    cpus 20
     memory '24G'
     time '6h'
 
@@ -57,11 +57,11 @@ process filter_run_minipileup {
     # Run each interval in parallel with 8 jobs
     # BQ ≥ 30, MQ ≥ 10, count alleles both strands (-C), vcf format (-c), trim 5bp each end (-T 5)
     # -s drop alleles with depth<INT (0)
-    cat "${id}.bed" | xargs -P16 -n3 bash -c '
+    cat "${id}.bed" | xargs -P20 -n3 bash -c '
         chr=\$1; pos1=\$2; pos2=\$3
         tmp=\$(mktemp)
         minipileup -f "'"${ref}"'" \
-            -c -C -Q 20 -q 30 \
+            -c -C -Q 20 -q 30 -T 5 \
             -s 0 \
             -r "\${chr}:\${pos2}-\${pos2}" \
             '"${sr_bams} ${lr_bams} \${ont_bams}"' \

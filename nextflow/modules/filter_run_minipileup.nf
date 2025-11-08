@@ -8,8 +8,8 @@ process filter_run_minipileup {
 
 
     cpus 20
-    memory '24G'
-    time '6h'
+    memory '8G'
+    time '12h'
 
     tag "$id"
 
@@ -65,15 +65,14 @@ process filter_run_minipileup {
 
 
     # First extract intervals
-    bcftools query -f '%CHROM\t%POS0\t%END\n' "${vcf}" | head -n 100 > "${id}.bed"
+    bcftools query -f '%CHROM\t%POS0\t%END\n' "${vcf}" > "${id}.bed"
 
 
     read -r chr start end < "${id}.bed"
     bam_inputs=\$(build_bam_inputs "\$chr" "\$end" "\$end" ${sr_bams} ${lr_bams} \${ont_bams})
     echo here
     echo \$bam_inputs
-    #minipileup -f "${ref}" -c -C -T 5 -Q 30 -q 10 -r "\${chr}:\${end}-\${end}" \${bam_inputs} | grep '^#' > "${id}.minipileup.vcf"
-    minipileup -f "${ref}" -c -C -T 5 -Q 30 -q 10 -r "\${chr}:\${end}-\${end}" \${bam_inputs} > x
+    minipileup -f "${ref}" -c -C -T 5 -Q 30 -q 10 -r "\${chr}:\${end}-\${end}" \${bam_inputs} > x    # weirdly not working when crams, hacky fix
     grep '^#' x > "${id}.minipileup.vcf"
     echo here2
     for bam in \${bam_inputs}; do

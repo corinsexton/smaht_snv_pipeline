@@ -25,10 +25,16 @@ process preprocess_vcf {
     """
     bcftools view --header-only ${vcf} > header.txt
 
+    # TODO!! HERE ADD IN REMOVAL OF SVs for LONGCALLD
     if grep -q -m1 'FEX' header.txt; then
         # this is only for RUFUS files (FEX=PASS)
 	    bcftools norm --check-ref x -m- -f ${ref} ${vcf} -Ou \
           | bcftools view -i 'FILTER=="PASS" || INFO/FEX == "PASS"' -Oz -o ${id}.norm.PASS.vcf.gz -Wtbi
+	    bcftools norm -a -Oz -o ${id}.norm.PASS.atom.vcf.gz ${id}.norm.PASS.vcf.gz -Wtbi
+    elif grep -q -m1 'MEI' header.txt; then
+        # for longcallD
+	    bcftools view -v snps -Ou ${vcf} | bcftools norm --check-ref x -m- -f ${ref} - -Ou \
+          | bcftools view -i 'FILTER=="PASS"' -Oz -o ${id}.norm.PASS.vcf.gz -Wtbi
 	    bcftools norm -a -Oz -o ${id}.norm.PASS.atom.vcf.gz ${id}.norm.PASS.vcf.gz -Wtbi
     else
 	    bcftools norm --check-ref x -m- -f ${ref} ${vcf} -Ou \

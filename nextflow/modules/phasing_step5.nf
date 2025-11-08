@@ -20,9 +20,9 @@ process phasing_step5 {
     pattern: "${id}.phasing.*.tsv",
     mode:'copy'
 
-    cpus 20
+    cpus 8 
     memory '16G'
-    time '12h'
+    time '6h'
 
     tag "$id"
 

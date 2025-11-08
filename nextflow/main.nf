@@ -106,6 +106,7 @@ def input_vcfs = Channel
     .splitCsv(header: true)
     .map { row ->
         def id  = row.id
+        //println "problem at ${id}"
         def vcf = file(row.vcf)
         def tbi = ensureTabixIndex(vcf)
         tuple(id, vcf, tbi)

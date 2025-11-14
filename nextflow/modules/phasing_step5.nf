@@ -21,14 +21,14 @@ process phasing_step5 {
     mode:'copy'
 
     cpus 8 
-    memory '16G'
+    memory '24G'
     time '6h'
 
     tag "$id"
 
     input:
     tuple val(id), path(vcf), path(tbi), 
-        path(truth_vcf), path(truth_vcf_tbi),
+        path(truth_vcf, stageAs: "?/*"), path(truth_vcf_tbi, stageAs: "?/*"),
         path(sr_bams), path(sr_bais), 
         path(lr_bams), path(lr_bais), 
         path(lr_ont_bams), path(lr_ont_bais),
@@ -48,7 +48,7 @@ process phasing_step5 {
 
     script:
     """
-    phasing_step5.py -w 8 -t ${step4_tsv} -b ${lr_bams} -s ${sex} -i ${id}
+    phasing_step2_phase_mosaic.py -w 8 -t ${step4_tsv} -b ${lr_bams} -s ${sex} -i ${id}
 
     sort -k1,1V -k2,2n ${id}_phasing_tags.tsv | bgzip - -o ${id}_phasing_tags.tsv.gz
     tabix -s1 -b2 -e2 ${id}_phasing_tags.tsv.gz

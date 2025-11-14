@@ -12,7 +12,7 @@ process phasing_step4 {
 
     input:
     tuple val(id), path(vcf), path(tbi),
-        path(truth_vcf), path(truth_vcf_tbi),
+        path(truth_vcf, stageAs: "?/*"), path(truth_vcf_tbi, stageAs: "?/*"),
         path(germline_vcf), path(germline_tbi)
 
     output:
@@ -20,6 +20,6 @@ process phasing_step4 {
 
     script:
     """
-    phasing_step4.sh -s $id -v $germline_vcf -w $vcf
+    phasing_step1_get_closest_germline.sh -s $id -v $germline_vcf -w $vcf
     """
 }

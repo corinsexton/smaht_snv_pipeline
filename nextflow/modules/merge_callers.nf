@@ -25,7 +25,7 @@ process merge_callers {
 
 
     output:
-        tuple val(id), path("${id}.merged.vcf.gz"), path("${id}.merged.vcf.gz.tbi"), path(truth_vcf), path(truth_tbi), emit:vcf
+        tuple val(id), path("${id}.merged.vcf.gz"), path("${id}.merged.vcf.gz.tbi"), path("truth.vcf.gz"), path("truth.vcf.gz.tbi"), emit:vcf
         path("${id}.merged.metrics.tsv"), emit: metrics
         path("${id}.merged.regions.tsv"), emit: regions
 
@@ -49,6 +49,9 @@ process merge_callers {
     def truth_tbi = truth_tbis[0]
 
     """
+    cp ${truth_vcf} truth.vcf.gz
+    cp ${truth_tbi} truth.vcf.gz.tbi
+
     echo "Merging callers for ${id}"
 
     merge_callers.py ${caller_vcf_pairs} -s ${id} -o ${id}.merged.vcf.gz

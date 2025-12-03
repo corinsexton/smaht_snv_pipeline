@@ -3,6 +3,7 @@
 
 nextflow.enable.dsl=2
 
+include { preprocess_merge_callers } from './workflows/merge_callers.nf'
 include { preprocess_and_filter_poe } from './workflows/preprocess_and_filter_poe.nf'
 include { run_vep } from './workflows/run_vep'
 include { split_tier1_tier2 } from './workflows/split_tier1_tier2.nf'
@@ -101,19 +102,20 @@ def input_bams = input_sr
     }
 
 /////
+
 def input_vcfs = Channel
-    .fromPath(params.input_csv)
+    .fromPath(params.input_vcfs)
     .splitCsv(header: true)
     .map { row ->
         def id  = row.id
-        //println "problem at ${id}"
+        def caller = row.caller
         def vcf = file(row.vcf)
-        def tbi = ensureTabixIndex(vcf)
-        tuple(id, vcf, tbi)
+        def tbi = file(row.vcf + '.tbi')
+        tuple(id, caller, vcf, tbi)
     }
 
 def truth_ch = Channel
-    .fromPath(params.input_csv)
+    .fromPath(params.input_metadata)
     .splitCsv(header: true)
     .map{ row ->
         def id = row.id
@@ -123,7 +125,7 @@ def truth_ch = Channel
     }
 
 def germline_calls_ch = Channel
-    .fromPath(params.input_csv)
+    .fromPath(params.input_metadata)
     .splitCsv(header: true)
     .map{ row ->
         def id = row.id
@@ -133,7 +135,7 @@ def germline_calls_ch = Channel
     }
 
 def sex_ch = Channel
-    .fromPath(params.input_csv)
+    .fromPath(params.input_metadata)
     .splitCsv(header: true)
     .map{ row ->
         def id = row.id
@@ -145,8 +147,14 @@ def sex_ch = Channel
 workflow {
 
     // remove first filters
+    merged_calls = preprocess_merge_callers(
+        input_vcfs.combine(truth_ch, by: 0),
+        params.ref,
+        regions_input
+    )
+
     filtered = preprocess_and_filter_poe(
-        input_vcfs.join(truth_ch),
+        merged_calls,
         poe_input,
         params.ref,
         params.segdup_regions,

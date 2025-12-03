@@ -12,7 +12,7 @@ process phasing_step1 {
 
     input:
     tuple val(id), path(vcf), path(tbi),
-        path(truth_vcf), path(truth_vcf_tbi),
+        path(truth_vcf, stageAs: "?/*"), path(truth_vcf_tbi, stageAs: "?/*"),
         path(sr_bams), path(sr_bais),
         path(lr_bams), path(lr_bais),
         path(lr_ont_bams), path(lr_ont_bais)

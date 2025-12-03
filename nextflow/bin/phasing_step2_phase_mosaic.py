@@ -74,7 +74,7 @@ def classify_row(row, bam_paths, sex):
         case_germ_only = counts.get("case_germ_only", 0)
 
         # Sex-specific chromosome logic
-        if sex == "male":
+        if sex == "male" or sex == 'M':
             # Haploid X/Y in males
             if chrom in ["chrX", "chrY"]:
                 if case_both > 1 and case_germ_only > 1 and case_none <= 1 and case_var_only <= 1: # 2 haplo
@@ -85,7 +85,7 @@ def classify_row(row, bam_paths, sex):
                     row["hap_classification"] = "artifact"
                 return row
 
-        elif sex == "female":
+        elif sex == "female" or sex == 'F':
             # Females: X diploid, Y = artifact
             if chrom == "chrY":
                 row["hap_classification"] = "artifact"

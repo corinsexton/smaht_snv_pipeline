@@ -124,6 +124,10 @@ def ensure_header_fields(hdr, ont_present):
         hdr.add_line('##FILTER=<ID=TIER2,Description="Alt present in short-read group at or above threshold; absent in long-read">')
 
     # INFO
+    if "CrossTech" not in hdr.info:
+        hdr.add_line('##INFO=<ID=CrossTech,Number=0,Type=Flag,Description="Alt supported in both short-read and PacBio (long-read) data at or above their combined thresholds">')
+    if "CrossCaller" not in hdr.info:
+        hdr.add_line('##INFO=<ID=CrossCaller,Number=0,Type=Flag,Description="Alt found in more than one variant caller">')
     if "SR_ADF" not in hdr.info:
         hdr.add_line('##INFO=<ID=SR_ADF,Number=2,Type=Integer,Description="Short-read forward depths (REF,ALT)">')
     if "SR_ADR" not in hdr.info:
@@ -242,6 +246,10 @@ def main():
             rec.filter.clear()
             if filt:
                 rec.filter.add(filt)  # else .
+            else:
+                continue
+
+            if filt == 'TIER1': rec.info["CrossTech"] = True
 
             # Set INFO counts
             rec.info["SR_ADF"] = (sr_ref_adf, sr_alt_adf)

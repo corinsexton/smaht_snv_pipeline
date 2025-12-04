@@ -49,8 +49,12 @@ process merge_callers {
     def truth_tbi = truth_tbis[0]
 
     """
-    cp ${truth_vcf} truth.vcf.gz
-    cp ${truth_tbi} truth.vcf.gz.tbi
+    if [[ ${truth_vcf}  == '1' ]]; then
+        touch truth.vcf.gz truth.vcf.gz.tbi
+    else
+        cp ${truth_vcf} truth.vcf.gz
+        cp ${truth_tbi} truth.vcf.gz.tbi
+    fi
 
     echo "Merging callers for ${id}"
 

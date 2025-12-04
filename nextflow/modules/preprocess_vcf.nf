@@ -17,7 +17,7 @@ process preprocess_vcf {
 
     output:
     tuple val(id), val(caller), path("${id}.${caller}.norm.PASS.atom.dedup.vcf.gz"), path("${id}.${caller}.norm.PASS.atom.dedup.vcf.gz.tbi"), path(truth_vcf), path(truth_tbi), emit: vcf
-    path("${id}.preprocess.metrics.tsv"), emit: metrics
+    path("${id}.${caller}.preprocess.metrics.tsv"), emit: metrics
     path("${id}.preprocess.regions.tsv"), emit: regions
 
 
@@ -83,8 +83,8 @@ process preprocess_vcf {
 
     {
       echo -e "id\tstep\tnum_before\tnum_truth_before\tnum_after\tnum_truth_after"
-      echo -e "${id}\tpreprocess\t\${num_before}\t\${num_truth_before}\t\${num_after}\t\${num_truth_after}"
-    } > ${id}.preprocess.metrics.tsv
+      echo -e "${id}\tpreprocess_${caller}\t\${num_before}\t\${num_truth_before}\t\${num_after}\t\${num_truth_after}"
+    } > ${id}.${caller}.preprocess.metrics.tsv
 
 
     """

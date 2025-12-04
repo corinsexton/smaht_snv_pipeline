@@ -87,6 +87,18 @@ def index_derived_by_position(derived_vcf_path, pos_set):
                 by_pos[key].append(rec)
     return by_pos
 
+def write_caller_tags(original_vcf_path, out_path):
+    targets = []
+    pos_set = set()
+    with open(out_path, "w") as f:
+        f.write("#CHROM\tPOS\tCALLERS\n")
+        with pysam.VariantFile(original_vcf_path) as vf:
+            it = vf.fetch() if vf.index is not None else vf
+            for rec in it:
+                caller_tag = ','.join(list(rec.info["CALLERS"]))
+                f.write(f"{rec.chrom}\t{rec.pos}\t{caller_tag}\n")
+
+    
 def main():
     ap = argparse.ArgumentParser(description="Extract strand-specific ref/alt counts into a wide TSV (one row per site).")
     ap.add_argument("original_vcf", help="Original SNV VCF (bgzipped/indexed recommended)")
@@ -96,6 +108,8 @@ def main():
                     help="Comma-separated labels matching samples in derived VCF, in order. "
                          "Example: SR,SR,LR,LR,ONT,ONT")
     args = ap.parse_args()
+
+    write_caller_tags(args.original_vcf,"caller_tags.tsv")
 
     targets, pos_set = load_targets_from_original(args.original_vcf)
     if not targets:

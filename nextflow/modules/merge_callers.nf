@@ -77,7 +77,7 @@ process merge_callers {
     {
       echo -e "id\tstep\tnum_before\tnum_truth_before\tnum_after\tnum_truth_after"
       echo -e "${id}\tpreprocess\t\${num_before}\t\${num_truth_before}\t\${num_after}\t\${num_truth_after}"
-    } > ${id}.preprocess.metrics.tsv
+    } > ${id}.merged.metrics.tsv
     """
 }
 

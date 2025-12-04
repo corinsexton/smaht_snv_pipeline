@@ -8,7 +8,7 @@
 #SBATCH -c 1
 #SBATCH -t 12:00:00
 #SBATCH -o slurm-%x.%j.out
-##SBATCH --dependency=afterany:20342350
+#SBATCH --dependency=afterany:22694505
 
 
 nextflow run main.nf  -resume \

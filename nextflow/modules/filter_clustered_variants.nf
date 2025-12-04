@@ -11,7 +11,7 @@ process filter_clustered_variants {
 
 
     cpus 1
-    memory '2G'
+    memory '4G'
     time '30m'
 
     tag "$id"
@@ -32,8 +32,9 @@ process filter_clustered_variants {
     script:
     """
 
-
-    filter_clustered_variants.py --window 100 ${vcf} ${id}.filtered.clusters.vcf
+    bcftools view -v snps ${vcf}  -Oz -o tmp.vcf.gz
+    tabix tmp.vcf.gz
+    filter_clustered_variants.py --window 50 tmp.vcf.gz ${id}.filtered.clusters.vcf
     bgzip ${id}.filtered.clusters.vcf
     tabix ${id}.filtered.clusters.vcf.gz
 

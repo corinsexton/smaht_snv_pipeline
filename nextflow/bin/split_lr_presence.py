@@ -176,6 +176,7 @@ def main():
     out_vcf = pysam.VariantFile(args.output_vcf, "w", header=out_header)
 
     # Process rows and emit records
+    missing = 0
     with open(args.input_tsv, newline="") as fin:
         reader = csv.DictReader(fin, delimiter="\t")
 
@@ -209,7 +210,7 @@ def main():
             sr_total = sr_ref_adf + sr_ref_adr + sr_alt_total 
             lr_total = lr_ref_adf + lr_ref_adr + lr_alt_total
 
-            print(f"row:  {row}")
+            #print(f"row:  {row}")
             #print(f"sr_total:{sr_total}, lr_total:{lr_total}")
 
             if (sr_total != 0): 
@@ -222,7 +223,8 @@ def main():
                 else:
                     filt = None  
             else:
-                print("missing in minipileup")
+                #print("missing in minipileup")
+                missing+=1
                 filt = None
 
 
@@ -273,6 +275,7 @@ def main():
             # Write record
             out_vcf.write(rec)
 
+    print(f"{missing} variants missing in minipileup")
     out_vcf.close()
     orig_vcf.close()
 

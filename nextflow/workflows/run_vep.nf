@@ -74,8 +74,15 @@ workflow run_vep {
     //mergeVCF(out)
     filter_vep(runVEPonVCF.out, 'mosaic')
 
-    split_snvs_indels(filter_vep.out.vcf, regions_input)
+
+  ////output:
+  ////  tuple val(id), path("snvs_${vcf.baseName}.gz"), path("snvs_${vcf.baseName}.gz.tbi"), emit: snvs
+  ////  tuple val(id), path("indels_${vcf.baseName}.gz"), path("indels_${vcf.baseName}.gz.tbi"), emit: indels
+  ////  path "${id}.snv_only.metrics.tsv", emit: metrics
+  ////  path "${id}.snv_only.regions.tsv", emit: regions
+    //split_snvs_indels(filter_vep.out.vcf, regions_input)
 
   emit:
-    split_snvs_indels.out.snvs
+    filter_vep.out.vcf
+    //split_snvs_indels.out.snvs
 }

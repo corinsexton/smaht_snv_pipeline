@@ -1,3 +1,0 @@
-id,sex,truth_vcf,germline_calls
-ST002-1D_BCM_300x,male,/home/cos689/smaht/test_benchmarking/clean_truthset_vcfs/ST002-1D_truthset.vcf.gz,/n/data1/hms/dbmi/park/corinne/smaht/test_benchmarking/smaht_snv_pipeline/nextflow/germline_calls/ST002_PASS.vcf.gz
-ST002-1G_BCM_300x,male,/home/cos689/smaht/test_benchmarking/clean_truthset_vcfs/ST002-1G_truthset.vcf.gz,/n/data1/hms/dbmi/park/corinne/smaht/test_benchmarking/smaht_snv_pipeline/nextflow/germline_calls/ST002_PASS.vcf.gz

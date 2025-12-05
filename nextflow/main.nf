@@ -8,6 +8,7 @@ include { preprocess_and_filter_poe } from './workflows/preprocess_and_filter_po
 include { run_vep } from './workflows/run_vep'
 include { split_tier1_tier2 } from './workflows/split_tier1_tier2.nf'
 include { phasing } from './workflows/phasing.nf'
+include { check_other_tissues } from './workflows/check_other_tissues.nf'
 
 params.panel_of_errors = "/n/data1/hms/dbmi/park/corinne/smaht/test_benchmarking/smaht_snv_pipeline/panel_of_errors/PON.q20q20.05.5.fa.gz"
 params.panel_of_errors_index  = "/n/data1/hms/dbmi/park/corinne/smaht/test_benchmarking/smaht_snv_pipeline/panel_of_errors/PON.q20q20.05.5.fa.gz.fai"
@@ -88,6 +89,38 @@ def parse_cram_csv(csv_path) {
 def input_sr  = parse_cram_csv(params.shortread_csv)
 def input_lr  = params.longread_csv ? parse_cram_csv(params.longread_csv) : Channel.empty()
 def input_ont = params.ont_csv      ? parse_cram_csv(params.ont_csv) : Channel.empty()
+
+// ---------- get all donor sr for final cross tissue check --------
+//
+// Extract donor + tissue, group by donor, and include CRAMs + CRAIs
+//
+input_sr
+    .map { id, crams, crais ->
+        def (donor, tissue) = id.tokenize('-')
+        tuple(id, donor, tissue, crams, crais)
+    }
+    .groupTuple(by: 1)   // group by donor
+    .map { ids, donor, tissues, crams, crais ->
+        // grouped_entries contains tuples: [id, donor, tissue, crams, crais]
+
+        def all_ids     = ids
+        def all_tissues = tissues
+
+        // Flatten donor-level crams & crais (maintains pairing)
+        def flat_crams  = crams.flatten()
+        def flat_crais  = crais.flatten()
+
+        // Return donor-level aggregate
+        tuple(donor, all_ids, flat_crams, flat_crais, all_tissues)
+    }
+    .flatMap { donor, all_ids, crams, crais, tissues ->
+        // For each original id, emit donor-level data
+        all_ids.collect { id ->
+            tuple(id, crams, crais, tissues)
+        }
+    }
+    .set { sr_by_donor }
+
 
 // ---------- merge all by sample ID ----------
 def input_bams = input_sr
@@ -179,17 +212,9 @@ workflow {
     // run pileup and split based on LR presence (tier1) / absence (tier2)
     tier_split_output = split_tier1_tier2(vep_snvs_out.join(truth_ch), input_bams, ref_input, regions_input)
 
-    phasing(tier_split_output, germline_calls_ch, input_bams, ref_input, vep_config, regions_input, sex_ch)
+    phasing_output = phasing(tier_split_output, germline_calls_ch, input_bams, ref_input, vep_config, regions_input, sex_ch)
 
-     // vcf_inputs
-  //       bam_inputs
-  //       ref_input
-  //       vep_config
-
-    // run last filters based on tier1 or tier2
-    // tier1_filters(tier_split_output.tier1)
-    // tier2_filters(tier_split_output.tier2)
-    
+    check_other_tissues(phasing_output, ref_input, sr_by_donor, regions_input)
 
 }
 

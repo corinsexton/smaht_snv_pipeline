@@ -26,7 +26,6 @@ process tier_variants {
           path(vcf), path(tbi),
           path(truth_vcf), path(truth_vcf_tbi),
           path(minipileup_vcf)
-    path(labels)
     tuple path(easy_regions), path(diff_regions), path(ext_regions),
         path(easy_regions_tbi), path(diff_regions_tbi), path(ext_regions_tbi)
 
@@ -37,14 +36,12 @@ process tier_variants {
 
     script:
     """
-    labs=\$( cat ${labels} )
 
     # get the counts for pileups
     # matches ref and alt alleles
     parse_minipileup.py ${vcf} \
             ${minipileup_vcf} \
-            ${id}.parsed.minipileup.tsv \
-            --labels \${labs}
+            ${id}.parsed.minipileup.tsv
 
     # assigns tiers based on LR ≥ 1 (TIER1), LR = 0 & SR ≥ 2 (TIER2), else (.)
     split_lr_presence.py ${id}.parsed.minipileup.tsv ${id}.tiered1.vcf \

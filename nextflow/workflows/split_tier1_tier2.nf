@@ -1,6 +1,7 @@
 nextflow.enable.dsl=2
 
-include { filter_run_minipileup }       from '../modules/filter_run_minipileup.nf'
+//include { filter_run_minipileup }       from '../modules/filter_run_minipileup.nf'
+include { run_minipileup_parallel }       from '../modules/run_minipileup_parallel.nf'
 include { tier_variants }       from '../modules/tier_variants.nf'
 include { filter_binom_fisher }       from '../modules/filter_binom_fisher.nf'
 
@@ -21,10 +22,12 @@ workflow split_tier1_tier2 {
       }
       .set { vcf_bam_channel }
 
-    filter_run_minipileup(vcf_bam_channel,ref_input)
+    //filter_run_minipileup(vcf_bam_channel,ref_input)
+    run_minipileup_parallel(vcf_bam_channel,ref_input)
 
     // count up reads in each assay, tier1/2 label
-    tier_variants(filter_run_minipileup.out.vcf,filter_run_minipileup.out.labels,regions_input)
+    //tier_variants(filter_run_minipileup.out.vcf,filter_run_minipileup.out.labels,regions_input)
+    tier_variants(run_minipileup_parallel.out.vcf,regions_input)
 
     // run binomial and fisher tests to get passing variants
     filter_binom_fisher(tier_variants.out.vcf, regions_input)

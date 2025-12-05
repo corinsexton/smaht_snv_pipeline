@@ -118,7 +118,10 @@ def main():
     with pysam.VariantFile(args.derived_vcf) as dvf:
         sample_names = list(dvf.header.samples)
 
-    labels = args.labels.split(",")
+    for i in samples_names:
+        lab = i.split('-')[1]
+        labels.append(lab)
+
     if len(labels) != len(sample_names):
         sys.stderr.write(f"ERROR: {len(sample_names)} samples in VCF but {len(labels)} labels provided.\n")
         sys.exit(1)

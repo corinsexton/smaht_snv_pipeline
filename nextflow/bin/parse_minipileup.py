@@ -104,9 +104,9 @@ def main():
     ap.add_argument("original_vcf", help="Original SNV VCF (bgzipped/indexed recommended)")
     ap.add_argument("derived_vcf", help="Derived VCF from minipileup (with ADF/ADR). Can be bgzipped or plain; index optional.")
     ap.add_argument("out_tsv", help="Output TSV path")
-    ap.add_argument("--labels", required=True,
-                    help="Comma-separated labels matching samples in derived VCF, in order. "
-                         "Example: SR,SR,LR,LR,ONT,ONT")
+    #ap.add_argument("--labels", required=True,
+    #                help="Comma-separated labels matching samples in derived VCF, in order. "
+    #                     "Example: SR,SR,LR,LR,ONT,ONT")
     args = ap.parse_args()
 
     write_caller_tags(args.original_vcf,"caller_tags.tsv")
@@ -115,10 +115,12 @@ def main():
     if not targets:
         sys.stderr.write("No SNV targets found in original VCF (ensure SNV-only).\n")
 
+    labels = []
+    sample_names = []
     with pysam.VariantFile(args.derived_vcf) as dvf:
         sample_names = list(dvf.header.samples)
 
-    for i in samples_names:
+    for i in sample_names:
         lab = i.split('-')[1]
         labels.append(lab)
 

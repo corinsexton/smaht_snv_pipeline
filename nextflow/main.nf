@@ -103,15 +103,18 @@ input_sr
     .map { ids, donor, tissues, crams, crais ->
         // grouped_entries contains tuples: [id, donor, tissue, crams, crais]
 
-        def all_ids     = ids
-        def all_tissues = tissues
-
         // Flatten donor-level crams & crais (maintains pairing)
         def flat_crams  = crams.flatten()
         def flat_crais  = crais.flatten()
 
+        // Expand tissue labels so each CRAM has one
+        def expanded_tissues = []
+        tissues.eachWithIndex { tissue, i ->
+            expanded_tissues.addAll( Collections.nCopies(crams[i].size(), tissue) )
+        }
+
         // Return donor-level aggregate
-        tuple(donor, all_ids, flat_crams, flat_crais, all_tissues)
+        tuple(donor, ids, flat_crams, flat_crais, expanded_tissues)
     }
     .flatMap { donor, all_ids, crams, crais, tissues ->
         // For each original id, emit donor-level data

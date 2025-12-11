@@ -7,9 +7,9 @@ process run_minipileup_parallel {
     cache 'lenient'
 
 
-    cpus 30
+    cpus 10
     memory '8G'
-    time '12h'
+    time '6h'
 
     tag "$id"
 
@@ -25,7 +25,7 @@ process run_minipileup_parallel {
     output:
     tuple val(id),
           path(vcf), path(tbi), path(truth_vcf), path(truth_vcf_tbi),
-          path("${id}.minipileup.vcf.gz"), emit: vcf
+          path("${id}.minipileup.vcf.gz"), path("${id}.minipileup.vcf.gz.tbi"), emit: vcf
 
     script:
     """
@@ -50,11 +50,14 @@ process run_minipileup_parallel {
 
     minipileup-parallel.sh -i ${vcf} \
         -r ${ref} \
-        -t 20 \
+        -t 10 \
+        --group 50 \
         -o ${id}.minipileup \
         \${sr_crams} \
         \${pb_crams} \
         \${ont_crams} 
+
+    tabix ${id}.minipileup.vcf.gz
 
     """
 }

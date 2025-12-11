@@ -9,15 +9,15 @@ process run_minipileup_sr_only {
     mode:'copy'
 
     publishDir "${params.results_dir}/final",
-    pattern: "${id}.final.*.tsv"
+    pattern: "${id}.final.*.tsv",
     mode:'copy'
 
     cache 'lenient'
 
 
-    cpus 2 
+    cpus 4 
     memory '4G'
-    time '3h'
+    time '6h'
 
     tag "$id"
 

@@ -9,7 +9,6 @@ nextflow.enable.dsl=2
 // module imports
 include { checkVCFheader; checkVCF } from '../modules/check_VCF.nf'
 include { generateSplits } from '../modules/generate_splits.nf'
-include { splitVCF } from '../modules/split_VCF.nf' 
 include { mergeVCF } from '../modules/merge_VCF.nf'  
 include { runVEP as runVEPonVCF } from '../modules/run_vep.nf'
 include { runVEP } from '../modules/run_vep.nf'
@@ -57,32 +56,8 @@ workflow run_vep {
 
 
     runVEPonVCF(inputs,'mosaic')
-    //// Run VEP on VCF files with header
-    //inputs |
-    //  checkVCF |
-    //  // Generate split files that each contain bin_size number of variants
-    //  generateSplits | transpose |
-    //  // Split VCF using split files
-    //  splitVCF | transpose |
-    //  // Run VEP for each split VCF file and for each VEP config
-    //  map { it + [format: 'vcf'] } | runVEPonVCF
-
-    //// Merge split VCF files (creates one output VCF for each input VCF)
-    //// COULD OPTIMIZE HERE (currently waits for all of above to finish)
-    //out = runVEPonVCF.out.files
-    //        .groupTuple(by: [0, 1, 4])
-    //mergeVCF(out)
     filter_vep(runVEPonVCF.out, 'mosaic')
-
-
-  ////output:
-  ////  tuple val(id), path("snvs_${vcf.baseName}.gz"), path("snvs_${vcf.baseName}.gz.tbi"), emit: snvs
-  ////  tuple val(id), path("indels_${vcf.baseName}.gz"), path("indels_${vcf.baseName}.gz.tbi"), emit: indels
-  ////  path "${id}.snv_only.metrics.tsv", emit: metrics
-  ////  path "${id}.snv_only.regions.tsv", emit: regions
-    //split_snvs_indels(filter_vep.out.vcf, regions_input)
 
   emit:
     filter_vep.out.vcf
-    //split_snvs_indels.out.snvs
 }

@@ -10,7 +10,7 @@ process filter_poe {
 
     cache 'lenient'
     cpus 1
-    memory '16G'
+    memory '12G'
     time '30m'
 
     tag "$id"

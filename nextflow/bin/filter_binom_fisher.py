@@ -71,12 +71,12 @@ def main():
 
     # Add new INFO fields if missing
     for line in [
-        '##INFO=<ID=SB_P,Number=1,Type=Float,Description="Fisher p-value for strand balance on chosen sample">',
-        '##INFO=<ID=GLM_P,Number=1,Type=Float,Description="Minimum binomial p-value among tests that ran">',
-        '##INFO=<ID=GLM_P_SR,Number=1,Type=Float,Description="Binomial p-value on SR (if run)">',
-        '##INFO=<ID=GLM_P_LR,Number=1,Type=Float,Description="Binomial p-value on LR (if run)">',
-        '##INFO=<ID=GLM_P_ONT,Number=1,Type=Float,Description="Binomial p-value on ONT (if run)">',
-        '##INFO=<ID=TEST_SRC,Number=1,Type=String,Description="Counts source used for Fisher strand test: LR or SR">'
+        '##INFO=<ID=SB_PVAL,Number=1,Type=Float,Description="Fisher p-value for strand balance on chosen sample">',
+        '##INFO=<ID=GERMLINE_PVAL,Number=1,Type=Float,Description="Minimum binomial p-value among tests that ran">',
+        '##INFO=<ID=GERMLINE_PVAL_SR,Number=1,Type=Float,Description="Binomial p-value on SR (if run)">',
+        '##INFO=<ID=GERMLINE_PVAL_PB,Number=1,Type=Float,Description="Binomial p-value on LR (if run)">',
+        '##INFO=<ID=GERMLINE_PVAL_ONT,Number=1,Type=Float,Description="Binomial p-value on ONT (if run)">',
+        '##INFO=<ID=SB_SRC,Number=1,Type=String,Description="Counts source used for Fisher strand test: LR or SR">'
     ]:
         tag = line.split("ID=")[1].split(",")[0]
         if tag not in inf.header.info:
@@ -113,8 +113,8 @@ def main():
         # Counts
         sr_adf_ref, sr_adf_alt = get_pair(rec.info, "SR_ADF")
         sr_adr_ref, sr_adr_alt = get_pair(rec.info, "SR_ADR")
-        lr_adf_ref, lr_adf_alt = get_pair(rec.info, "LR_ADF")
-        lr_adr_ref, lr_adr_alt = get_pair(rec.info, "LR_ADR")
+        lr_adf_ref, lr_adf_alt = get_pair(rec.info, "PB_ADF")
+        lr_adr_ref, lr_adr_alt = get_pair(rec.info, "PB_ADR")
         ont_adf_ref, ont_adf_alt = get_pair(rec.info, "ONT_ADF") if "ONT_ADF" in rec.info else (0, 0)
         ont_adr_ref, ont_adr_alt = get_pair(rec.info, "ONT_ADR") if "ONT_ADR" in rec.info else (0, 0)
 
@@ -190,12 +190,12 @@ def main():
         # output the p value for every test.
         if strand_ok and germline_ok:
             pass_both += 1
-            rec.info["SB_P"] = float(sb_p)
-            rec.info["TEST_SRC"] = src
-            if glm_p_sr is not None: rec.info["GLM_P_SR"] = float(glm_p_sr)
-            if glm_p_lr is not None: rec.info["GLM_P_LR"] = float(glm_p_lr)
-            if glm_p_ont is not None: rec.info["GLM_P_ONT"] = float(glm_p_ont)
-            if glm_p_min is not None: rec.info["GLM_P"] = float(glm_p_min)
+            rec.info["SB_PVAL"] = float(sb_p)
+            rec.info["SB_SRC"] = src
+            if glm_p_sr is not None: rec.info["GERMLINE_PVAL_SR"] = float(glm_p_sr)
+            if glm_p_lr is not None: rec.info["GERMLINE_PVAL_PB"] = float(glm_p_lr)
+            if glm_p_ont is not None: rec.info["GERMLINE_PVAL_ONT"] = float(glm_p_ont)
+            if glm_p_min is not None: rec.info["GERMLINE_PVAL"] = float(glm_p_min)
             outf.write(rec)
         else:
             if not strand_ok and not germline_ok: fail_both += 1

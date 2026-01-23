@@ -8,10 +8,11 @@ process filter_poe {
     pattern: "${id}.filter_poe.*.tsv",
     mode:'copy'
 
-    cache 'lenient'
     cpus 1
     memory '12G'
     time '30m'
+
+    cache 'lenient'
 
     tag "$id"
 

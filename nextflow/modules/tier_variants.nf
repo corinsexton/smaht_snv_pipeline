@@ -13,7 +13,7 @@ process tier_variants {
     mode:'copy'
 
 
-    //cache false
+    cache false
 
     cpus 1
     memory '2G'

@@ -152,8 +152,6 @@ awk -v n="$GROUP" '
 END { if (line != "") print line }
 ' "$INTERVALS" > "$GROUPED"
 
-# Safety check
-[[ -s "$GROUPED" ]] || { echo "Error: grouped intervals file is empty"; exit 1; }
 
 # Create run function
 run_region() {
@@ -178,7 +176,7 @@ run_region() {
     local HBAMS=()
     for cram in "${CRAMS[@]}"; do
       local bam="${WORKDIR}/$(basename "${cram%.*}")_${safe}.bam"
-      samtools view --reference "$REFERENCE_FASTA" --write-index -b -o "$bam" "$cram" "$key"
+      samtools view --reference "$REFERENCE_FASTA" --write-index -b -o "$bam" "$cram" chr1:10001-10001
       HBAMS+=("$bam")
     done
     minipileup -f "$REFERENCE_FASTA" \
@@ -206,11 +204,34 @@ run_region() {
       BAMS+=("$bam")
     done
 
-    # Run minipileup for this region
+	# Run minipileup for this region (avoid piping so segfault can't break the shell pipeline)
+    tmp_out="${WORKDIR}/minipileup_${rsafe}.$$.$RANDOM.out"
+
     minipileup -f "$REFERENCE_FASTA" \
       $MINPILEUP_ARGS \
       -r "$region" \
-      "${BAMS[@]}" | grep -v '^#' >> "$group_vcf" || true
+      "${BAMS[@]}" > "$tmp_out"
+    mp_status=$?
+
+    if [[ $mp_status -eq 139 ]]; then
+      echo "Seg fault at $region" >&2
+      rm -f "$tmp_out"
+      for b in "${BAMS[@]}"; do rm -f "$b" "${b}.csi"; done
+      continue
+    elif [[ $mp_status -ne 0 ]]; then
+      # keep prior behavior: don't kill the overall job on other minipileup failures
+      rm -f "$tmp_out"
+      true
+    else
+      grep -v '^#' "$tmp_out" >> "$group_vcf" || true
+      rm -f "$tmp_out"
+    fi
+
+    ## Run minipileup for this region
+    #minipileup -f "$REFERENCE_FASTA" \
+    #  $MINPILEUP_ARGS \
+    #  -r "$region" \
+    #  "${BAMS[@]}" | grep -v '^#' >> "$group_vcf" || true
 
     # Cleanup per-region BAMs
     for b in "${BAMS[@]}"; do rm -f "$b" "${b}.csi"; done
@@ -221,34 +242,43 @@ run_region() {
 export -f run_region
 export WORKDIR REFERENCE_FASTA MINPILEUP_ARGS HEADER_VCF
 
-# Create temporary VCF file with header only
-echo "Creating temporary VCF with header..."
-read -r first_line < "$GROUPED"
-run_region "$first_line" 1 "${ALL_CRAMS[@]}"
+export MERGED_VCF="${WORKDIR}/merged.vcf"
+export SORTED_VCF="${WORKDIR}/sorted.vcf"
 
-[[ -s "$HEADER_VCF" ]] || { echo "Error: header not generated"; exit 1; }
+# Safety check
+if [[ ! -s "$GROUPED" ]]; then
+	echo "Error: grouped intervals file is empty"
+	run_region chr1:10001-10001 1 "${ALL_CRAMS[@]}"
 
-# Parallel execution
-echo "Running minipileup in parallel on intervals..."
-grep -Ev '^[[:space:]]*($|#)' "$GROUPED" | \
-xargs -P "$THREADS" -I{} bash -c 'run_region "$1" "$2" "${@:3}"' _ \
-  "{}" 0 "${ALL_CRAMS[@]}" || { echo "Error: parallel minipileup execution failed"; exit 1; }
+	cat "$HEADER_VCF" > "$MERGED_VCF"
+else
+	# Create temporary VCF file with header only
+	echo "Creating temporary VCF with header..."
+	read -r first_line < "$GROUPED"
+	run_region "$first_line" 1 "${ALL_CRAMS[@]}"
+	
+	[[ -s "$HEADER_VCF" ]] || { echo "Error: header not generated"; exit 1; }
+	
+	# Parallel execution
+	echo "Running minipileup in parallel on intervals..."
+	grep -Ev '^[[:space:]]*($|#)' "$GROUPED" | \
+	xargs -P "$THREADS" -I{} bash -c 'run_region "$1" "$2" "${@:3}"' _ \
+	  "{}" 0 "${ALL_CRAMS[@]}" || { echo "Error: parallel minipileup execution failed"; exit 1; }
+	
+	# Collect shard outputs (sorted, safe if none)
+	shopt -s nullglob
+	mapfile -t SHARDS < <(printf "%s\n" "$WORKDIR"/*.group.vcf)
+	shopt -u nullglob
+	(( ${#SHARDS[@]} > 0 )) || { echo "Error: no grouped outputs found in $WORKDIR"; exit 1; }
+	
+	echo "Merging ${#SHARDS[@]} annotated groups..."
+	
+	# Write header once
+	cat "$HEADER_VCF" > "$MERGED_VCF"
+	# Append all shard bodies
+	cat "${SHARDS[@]}" >> "$MERGED_VCF"
 
-# Collect shard outputs (sorted, safe if none)
-shopt -s nullglob
-mapfile -t SHARDS < <(printf "%s\n" "$WORKDIR"/*.group.vcf)
-shopt -u nullglob
-(( ${#SHARDS[@]} > 0 )) || { echo "Error: no grouped outputs found in $WORKDIR"; exit 1; }
-
-# Merging annotated groups using bcftools
-echo "Merging ${#SHARDS[@]} annotated groups..."
-MERGED_VCF="${WORKDIR}/merged.vcf"
-SORTED_VCF="${WORKDIR}/sorted.vcf"
-
-# Write header once
-cat "$HEADER_VCF" > "$MERGED_VCF"
-# Append all shard bodies
-cat "${SHARDS[@]}" >> "$MERGED_VCF"
+fi
 
 echo "-- BCFTools ---------------------------"
 bcftools sort -T "tmp_bcftools.XXXXXX" -O v -o "$SORTED_VCF" "$MERGED_VCF" \

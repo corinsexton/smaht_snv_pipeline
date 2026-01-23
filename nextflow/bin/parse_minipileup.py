@@ -26,18 +26,38 @@ def first_base(allele: str):
         return None
     return allele[0] if len(allele) > 0 else None
 
+
 def choose_alt_index(alleles, target_alt_base: str):
     """
-    Choose ALT index (>=1) whose *first base* matches target_alt_base.
-    Prefer single-base alleles. Return index or None if not found.
+    Select the ALT index matching the original SNV ALT base, applying special
+    rules when REF/ALT in minipileup are padded (multi-base).
     """
     if target_alt_base is None or len(alleles) <= 1:
         return None
-    candidates = [i for i in range(1, len(alleles)) if first_base(alleles[i]) == target_alt_base]
+
+    ref_len = len(alleles[0])
+
+    # 1. First: padded-case rule -> same-length ALT with same first base
+    padded_matches = [
+        i for i in range(1, len(alleles))
+        if len(alleles[i]) == ref_len and
+        alleles[i].strip('N') == target_alt_base
+    ]
+    if padded_matches:
+        return padded_matches[0]  # exact padded match wins
+
+    # 2. Otherwise fall back to single-base / prefix matching
+    candidates = [
+        i for i in range(1, len(alleles))
+        if first_base(alleles[i]) == target_alt_base
+    ]
     if not candidates:
         return None
+
+    # Prefer single-base alt if present
     singles = [i for i in candidates if len(alleles[i]) == 1]
     return singles[0] if singles else candidates[0]
+
 
 def get_numberR(sample, key):
     """

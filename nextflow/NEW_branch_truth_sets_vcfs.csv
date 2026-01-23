@@ -1,0 +1,9 @@
+id,caller,vcf
+ST002_BCM_300x-1D,RUFUS,/n/data1/hms/dbmi/park/dominika/testing/smaht/tissues/RUFUS_single_sample/sorted.atomed.normed.snv.indels.ec2.RUFUS.Final.ST002-1D_BCM_ill_DS300x0.bam.combined.vcf.gz
+ST002_BCM_300x-1G,RUFUS,/n/data1/hms/dbmi/park/dominika/testing/smaht/tissues/RUFUS_single_sample/sorted.atomed.normed.snv.indels.ec2.RUFUS.Final.ST002-1G_BCM_ill_DS300x0.bam.combined.vcf.gz
+ST002_BCM_300x-1D,TNhaplotyper2,/n/data1/hms/dbmi/park/jiny/SMaHT/Tissue6/benchmark/output_raw/1.MT2_to/ST002-1D_BCM_ill_DS300x.vcf.gz
+ST002_BCM_300x-1G,TNhaplotyper2,/n/data1/hms/dbmi/park/jiny/SMaHT/Tissue6/benchmark/output_raw/1.MT2_to/ST002-1G_BCM_ill_DS300x.vcf.gz
+ST002_BCM_300x-1G,Strelka2,/n/data1/hms/dbmi/park/corinne/smaht/test_benchmarking/strelka/300x_nextflow/results/variant_calling/strelka/ST002-1G_vs_ST001-1D/ST002-1G_vs_ST001-1D.strelka.somatic_snvs.vcf.gz
+ST002_BCM_300x-1D,Strelka2,/n/data1/hms/dbmi/park/corinne/smaht/test_benchmarking/strelka/300x_nextflow/results/variant_calling/strelka/ST002-1D_vs_ST001-1D/ST002-1D_vs_ST001-1D.strelka.somatic_snvs.vcf.gz
+ST002_BCM_300x-1G,longcallD,/n/data1/hms/dbmi/park/dominika/testing/smaht/tissues/LongCallD/ST002-1G_all_pacbio.vcf.gz
+ST002_BCM_300x-1D,longcallD,/n/data1/hms/dbmi/park/corinne/smaht/test_benchmarking/longcalld_vcfs/ST002-1D_all_pacbio.vcf.gz

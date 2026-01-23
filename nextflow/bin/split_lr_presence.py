@@ -124,6 +124,10 @@ def ensure_header_fields(hdr, ont_present):
         hdr.add_line('##FILTER=<ID=TIER2,Description="Alt present in short-read group at or above threshold; absent in long-read">')
 
     # INFO
+    if "CrossTech" not in hdr.info:
+        hdr.add_line('##INFO=<ID=CrossTech,Number=0,Type=Flag,Description="Alt supported in both short-read and PacBio (long-read) data at or above their combined thresholds">')
+    if "CrossCaller" not in hdr.info:
+        hdr.add_line('##INFO=<ID=CrossCaller,Number=0,Type=Flag,Description="Alt found in more than one variant caller">')
     if "SR_ADF" not in hdr.info:
         hdr.add_line('##INFO=<ID=SR_ADF,Number=2,Type=Integer,Description="Short-read forward depths (REF,ALT)">')
     if "SR_ADR" not in hdr.info:
@@ -176,6 +180,7 @@ def main():
     out_vcf = pysam.VariantFile(args.output_vcf, "w", header=out_header)
 
     # Process rows and emit records
+    missing = 0
     with open(args.input_tsv, newline="") as fin:
         reader = csv.DictReader(fin, delimiter="\t")
 
@@ -209,7 +214,7 @@ def main():
             sr_total = sr_ref_adf + sr_ref_adr + sr_alt_total 
             lr_total = lr_ref_adf + lr_ref_adr + lr_alt_total
 
-            print(f"row:  {row}")
+            #print(f"row:  {row}")
             #print(f"sr_total:{sr_total}, lr_total:{lr_total}")
 
             if (sr_total != 0): 
@@ -222,7 +227,8 @@ def main():
                 else:
                     filt = None  
             else:
-                print("missing in minipileup")
+                #print("missing in minipileup")
+                missing+=1
                 filt = None
 
 
@@ -240,6 +246,10 @@ def main():
             rec.filter.clear()
             if filt:
                 rec.filter.add(filt)  # else .
+            else:
+                continue
+
+            if filt == 'TIER1': rec.info["CrossTech"] = True
 
             # Set INFO counts
             rec.info["SR_ADF"] = (sr_ref_adf, sr_alt_adf)
@@ -273,6 +283,7 @@ def main():
             # Write record
             out_vcf.write(rec)
 
+    print(f"{missing} variants missing in minipileup")
     out_vcf.close()
     orig_vcf.close()
 

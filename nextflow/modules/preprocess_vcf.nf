@@ -11,13 +11,13 @@ process preprocess_vcf {
     mode:'copy'
 
     input:
-    tuple val(id), path(vcf), path(tbi), path(ref), path(truth_vcf), path(truth_tbi)
+    tuple val(id), val(caller), path(vcf), path(tbi), path(ref), path(truth_vcf), path(truth_tbi)
     tuple path(easy_regions), path(diff_regions), path(ext_regions),
         path(easy_regions_tbi), path(diff_regions_tbi), path(ext_regions_tbi)
 
     output:
-    tuple val(id), path("${id}.norm.PASS.atom.dedup.vcf.gz"), path("${id}.norm.PASS.atom.dedup.vcf.gz.tbi"), path(truth_vcf), path(truth_tbi), emit:vcf
-    path("${id}.preprocess.metrics.tsv"), emit: metrics
+    tuple val(id), val(caller), path("${id}.${caller}.norm.PASS.atom.dedup.vcf.gz"), path("${id}.${caller}.norm.PASS.atom.dedup.vcf.gz.tbi"), path(truth_vcf), path(truth_tbi), emit: vcf
+    path("${id}.${caller}.preprocess.metrics.tsv"), emit: metrics
     path("${id}.preprocess.regions.tsv"), emit: regions
 
 
@@ -43,12 +43,12 @@ process preprocess_vcf {
     fi
 	
 
-    py_dedup_atomized.py ${id}.norm.PASS.vcf.gz ${id}.norm.PASS.atom.vcf.gz ${id}.norm.PASS.atom.dedup.vcf.gz
+    py_dedup_atomized.py ${id}.norm.PASS.vcf.gz ${id}.norm.PASS.atom.vcf.gz ${id}.${caller}.norm.PASS.atom.dedup.vcf.gz
 
 
     # --- metrics (standard schema) ---
     BEFORE_VCF=${vcf}
-    AFTER_VCF=${id}.norm.PASS.atom.dedup.vcf.gz
+    AFTER_VCF=${id}.${caller}.norm.PASS.atom.dedup.vcf.gz
 
     num_before=\$(bcftools view -H "\${BEFORE_VCF}" | wc -l | awk '{print \$1}')
     num_after=\$(bcftools view -H "\${AFTER_VCF}"  | wc -l | awk '{print \$1}')
@@ -83,8 +83,8 @@ process preprocess_vcf {
 
     {
       echo -e "id\tstep\tnum_before\tnum_truth_before\tnum_after\tnum_truth_after"
-      echo -e "${id}\tpreprocess\t\${num_before}\t\${num_truth_before}\t\${num_after}\t\${num_truth_after}"
-    } > ${id}.preprocess.metrics.tsv
+      echo -e "${id}\tpreprocess_${caller}\t\${num_before}\t\${num_truth_before}\t\${num_after}\t\${num_truth_after}"
+    } > ${id}.${caller}.preprocess.metrics.tsv
 
 
     """

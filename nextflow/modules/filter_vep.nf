@@ -30,7 +30,8 @@ process filter_vep {
     val(filter_value)
 
   output:
-    tuple val(id), path("${out_file}.gz"), path("${out_file}.gz.tbi"), path(truth_vcf), path(truth_tbi), emit: vcf
+    tuple val(id), path("${out_file}.gz"), path("${out_file}.gz.tbi"), emit: vcf
+    //tuple val(id), path("${out_file}.gz"), path("${out_file}.gz.tbi"), path(truth_vcf), path(truth_tbi), emit: vcf
     //path "${id}.filter_vep.metrics.tsv", emit: metrics
     
 

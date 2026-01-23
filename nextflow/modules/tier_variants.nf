@@ -26,7 +26,6 @@ process tier_variants {
           path(vcf), path(tbi),
           path(truth_vcf), path(truth_vcf_tbi),
           path(minipileup_vcf)
-    path(labels)
     tuple path(easy_regions), path(diff_regions), path(ext_regions),
         path(easy_regions_tbi), path(diff_regions_tbi), path(ext_regions_tbi)
 
@@ -37,19 +36,32 @@ process tier_variants {
 
     script:
     """
-    labs=\$( cat ${labels} )
 
     # get the counts for pileups
     # matches ref and alt alleles
     parse_minipileup.py ${vcf} \
             ${minipileup_vcf} \
-            ${id}.parsed.minipileup.tsv \
-            --labels \${labs}
+            ${id}.parsed.minipileup.tsv
 
     # assigns tiers based on LR ≥ 1 (TIER1), LR = 0 & SR ≥ 2 (TIER2), else (.)
-    split_lr_presence.py ${id}.parsed.minipileup.tsv ${id}.tiered.vcf \
+    split_lr_presence.py ${id}.parsed.minipileup.tsv ${id}.tiered1.vcf \
         --original_vcf ${vcf}
-    bgzip ${id}.tiered.vcf
+    bgzip ${id}.tiered1.vcf
+    tabix ${id}.tiered1.vcf.gz
+
+    bgzip caller_tags.tsv
+    tabix -s1 -b2 -e2 caller_tags.tsv.gz
+
+    bcftools annotate \
+    -a caller_tags.tsv.gz \
+    -c CHROM,POS,CALLERS \
+    -H '##INFO=<ID=CALLERS,Number=.,Type=String,Description="List of variant callers that reported this variant">' \
+    -Oz -o ${id}.tiered2.vcf.gz \
+    ${id}.tiered1.vcf.gz
+
+    tabix ${id}.tiered2.vcf.gz
+
+    add_crosscaller.py -i ${id}.tiered2.vcf.gz -o ${id}.tiered.vcf.gz
     tabix ${id}.tiered.vcf.gz
 
     # split by tiers

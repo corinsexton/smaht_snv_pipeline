@@ -11,7 +11,7 @@ process filter_centromere_segdups {
 
 
     cpus 1
-    memory '2G'
+    memory '4G'
     time '30m'
 
     tag "$id"

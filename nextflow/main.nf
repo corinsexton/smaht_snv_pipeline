@@ -3,10 +3,12 @@
 
 nextflow.enable.dsl=2
 
+include { preprocess_merge_callers } from './workflows/merge_callers.nf'
 include { preprocess_and_filter_poe } from './workflows/preprocess_and_filter_poe.nf'
 include { run_vep } from './workflows/run_vep'
 include { split_tier1_tier2 } from './workflows/split_tier1_tier2.nf'
 include { phasing } from './workflows/phasing.nf'
+include { check_other_tissues } from './workflows/check_other_tissues.nf'
 
 params.panel_of_errors = "/n/data1/hms/dbmi/park/corinne/smaht/test_benchmarking/smaht_snv_pipeline/panel_of_errors/PON.q20q20.05.5.fa.gz"
 params.panel_of_errors_index  = "/n/data1/hms/dbmi/park/corinne/smaht/test_benchmarking/smaht_snv_pipeline/panel_of_errors/PON.q20q20.05.5.fa.gz.fai"
@@ -88,6 +90,41 @@ def input_sr  = parse_cram_csv(params.shortread_csv)
 def input_lr  = params.longread_csv ? parse_cram_csv(params.longread_csv) : Channel.empty()
 def input_ont = params.ont_csv      ? parse_cram_csv(params.ont_csv) : Channel.empty()
 
+// ---------- get all donor sr for final cross tissue check --------
+//
+// Extract donor + tissue, group by donor, and include CRAMs + CRAIs
+//
+input_sr
+    .map { id, crams, crais ->
+        def (donor, tissue) = id.tokenize('-')
+        tuple(id, donor, tissue, crams, crais)
+    }
+    .groupTuple(by: 1)   // group by donor
+    .map { ids, donor, tissues, crams, crais ->
+        // grouped_entries contains tuples: [id, donor, tissue, crams, crais]
+
+        // Flatten donor-level crams & crais (maintains pairing)
+        def flat_crams  = crams.flatten()
+        def flat_crais  = crais.flatten()
+
+        // Expand tissue labels so each CRAM has one
+        def expanded_tissues = []
+        tissues.eachWithIndex { tissue, i ->
+            expanded_tissues.addAll( Collections.nCopies(crams[i].size(), tissue) )
+        }
+
+        // Return donor-level aggregate
+        tuple(donor, ids, flat_crams, flat_crais, expanded_tissues)
+    }
+    .flatMap { donor, all_ids, crams, crais, tissues ->
+        // For each original id, emit donor-level data
+        all_ids.collect { id ->
+            tuple(id, crams, crais, tissues)
+        }
+    }
+    .set { sr_by_donor }
+
+
 // ---------- merge all by sample ID ----------
 def input_bams = input_sr
     .join(input_lr)
@@ -101,19 +138,20 @@ def input_bams = input_sr
     }
 
 /////
+
 def input_vcfs = Channel
-    .fromPath(params.input_csv)
+    .fromPath(params.input_vcfs)
     .splitCsv(header: true)
     .map { row ->
         def id  = row.id
-        //println "problem at ${id}"
+        def caller = row.caller
         def vcf = file(row.vcf)
-        def tbi = ensureTabixIndex(vcf)
-        tuple(id, vcf, tbi)
+        def tbi = file(row.vcf + '.tbi')
+        tuple(id, caller, vcf, tbi)
     }
 
 def truth_ch = Channel
-    .fromPath(params.input_csv)
+    .fromPath(params.input_metadata)
     .splitCsv(header: true)
     .map{ row ->
         def id = row.id
@@ -123,7 +161,7 @@ def truth_ch = Channel
     }
 
 def germline_calls_ch = Channel
-    .fromPath(params.input_csv)
+    .fromPath(params.input_metadata)
     .splitCsv(header: true)
     .map{ row ->
         def id = row.id
@@ -133,7 +171,7 @@ def germline_calls_ch = Channel
     }
 
 def sex_ch = Channel
-    .fromPath(params.input_csv)
+    .fromPath(params.input_metadata)
     .splitCsv(header: true)
     .map{ row ->
         def id = row.id
@@ -145,8 +183,14 @@ def sex_ch = Channel
 workflow {
 
     // remove first filters
+    merged_calls = preprocess_merge_callers(
+        input_vcfs.combine(truth_ch, by: 0),
+        params.ref,
+        regions_input
+    )
+
     filtered = preprocess_and_filter_poe(
-        input_vcfs.join(truth_ch),
+        merged_calls,
         poe_input,
         params.ref,
         params.segdup_regions,
@@ -171,17 +215,9 @@ workflow {
     // run pileup and split based on LR presence (tier1) / absence (tier2)
     tier_split_output = split_tier1_tier2(vep_snvs_out.join(truth_ch), input_bams, ref_input, regions_input)
 
-    phasing(tier_split_output, germline_calls_ch, input_bams, ref_input, vep_config, regions_input, sex_ch)
+    phasing_output = phasing(tier_split_output, germline_calls_ch, input_bams, ref_input, vep_config, regions_input, sex_ch)
 
-     // vcf_inputs
-  //       bam_inputs
-  //       ref_input
-  //       vep_config
-
-    // run last filters based on tier1 or tier2
-    // tier1_filters(tier_split_output.tier1)
-    // tier2_filters(tier_split_output.tier2)
-    
+    check_other_tissues(phasing_output, ref_input, sr_by_donor, regions_input)
 
 }
 

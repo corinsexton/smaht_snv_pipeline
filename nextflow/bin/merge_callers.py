@@ -146,11 +146,12 @@ def validate_input_vcf(value):
 
     # Enforce allowed CALLER names
     caller, _ = value.split(":", 1)
-    if caller not in VALID_CALLERS:
-        allowed = ", ".join(VALID_CALLERS)
-        raise argparse.ArgumentTypeError(
-            f"Caller '{caller}' does not match allowed callers: {allowed}"
-        )
+    #if caller not in VALID_CALLERS:
+    #    allowed = ", ".join(VALID_CALLERS)
+    #    raise argparse.ArgumentTypeError(
+    #        f"Caller '{caller}' does not match allowed callers: {allowed}"
+    #    )
+        
 
     return value
 
@@ -269,13 +270,13 @@ def main(args):
     for caller_vcf in args.input_vcf:
         caller, vcf_path = caller_vcf.split(":", 1)
 
-        if caller == "TNhaplotyper2":
+        if caller.split("_")[0] == "TNhaplotyper2":
             handler = TNhaplotyper2Vcf(vcf_path)
-        elif caller == "Strelka2":
+        elif caller.split("_")[0] == "Strelka2":
             handler = Strelka2Vcf(vcf_path)
-        elif caller == "longcallD":
+        elif caller.split("_")[0] == "longcallD":
             handler = longcallDVcf(vcf_path)
-        elif caller == "RUFUS":
+        elif caller.split("_")[0] == "RUFUS":
             handler = RUFUSVcf(vcf_path)
 
         caller_handlers.append(handler)
@@ -341,19 +342,22 @@ def main(args):
                         )
                     contigs.setdefault(contig_id, length)
 
-    # If a contig appears without length in some callers, make sure at least one
-    # caller provides its length
-    for contig_id in contigs_no_length:
-        if contig_id not in contigs:
-            raise ValueError(
-                f"Contig {contig_id} missing length information from other callers"
-            )
+    # CS edit for rufus files
+    ## If a contig appears without length in some callers, make sure at least one
+    ## caller provides its length
+    #for contig_id in contigs_no_length:
+    #    if contig_id not in contigs:
+    #        raise ValueError(
+    #            f"Contig {contig_id} missing length information from other callers"
+    #        )
 
     # Sort contigs and generate contig lines
     contig_lines = ""
     for contig_id in sorted(contigs.keys(), key=contig_sort_key):
-        length = contigs[contig_id]
-        contig_lines += f"##contig=<ID={contig_id},length={length}>\n"
+        # CS edit for rufus files
+        if contig_id in contigs:
+            length = contigs[contig_id]
+            contig_lines += f"##contig=<ID={contig_id},length={length}>\n"
 
     # Generate new definitions (FILTER/INFO/ALT + SAMPLE)
     new_definitions = "##fileformat=VCFv4.2\n" + contig_lines

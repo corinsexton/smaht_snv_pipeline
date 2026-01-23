@@ -53,15 +53,15 @@ process phasing_step5 {
     sort -k1,1V -k2,2n ${id}_phasing_tags.tsv | bgzip - -o ${id}_phasing_tags.tsv.gz
     tabix -s1 -b2 -e2 ${id}_phasing_tags.tsv.gz
 
-    bcftools annotate -a ${id}_phasing_tags.tsv.gz -c CHROM,POS,PHASING \
-         -H '##INFO=<ID=PHASING,Number=1,Type=String,Description="Phasing classification from long-read haplotyping">' \
+    bcftools annotate -a ${id}_phasing_tags.tsv.gz -c CHROM,POS,PB_PHASING \
+         -H '##INFO=<ID=PB_PHASING,Number=1,Type=String,Description="Phasing classification from long-read haplotyping">' \
          -Oz -o annotated.vcf.gz ${vcf}
     tabix annotated.vcf.gz
 
-    bcftools view -i '(FILTER="TIER2") || (INFO/PHASING="MOSAIC_PHASED") || (INFO/PHASING="UNABLE_TO_PHASE")' annotated.vcf.gz -Oz -o ${id}.phased.vcf.gz
+    bcftools view -i '(FILTER="TIER2") || (INFO/PB_PHASING="MOSAIC_PHASED") || (INFO/PB_PHASING="UNABLE_TO_PHASE")' annotated.vcf.gz -Oz -o ${id}.phased.vcf.gz
     tabix ${id}.phased.vcf.gz
 
-    bcftools view -i '(INFO/PHASING="ARTIFACT") || (INFO/PHASING="GERMLINE")' annotated.vcf.gz -Oz -o ${id}.phased.fail.vcf.gz
+    bcftools view -i '(INFO/PB_PHASING="ARTIFACT") || (INFO/PB_PHASING="GERMLINE")' annotated.vcf.gz -Oz -o ${id}.phased.fail.vcf.gz
     tabix ${id}.phased.fail.vcf.gz
 
 

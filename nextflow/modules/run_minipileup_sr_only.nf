@@ -12,7 +12,7 @@ process run_minipileup_sr_only {
     pattern: "${id}.final.*.tsv",
     mode:'copy'
 
-    cache 'lenient'
+    cache false
 
 
     cpus 4 
@@ -54,9 +54,13 @@ process run_minipileup_sr_only {
         sr_tissue+=" --sr-tissue \${f}"
     done
 
-    minipileup-parallel_sr_only.sh -i ${vcf} \
+    bcftools view -R ${easy_regions} -Oz -o ${id}.easyonly.vcf.gz ${vcf}
+    tabix ${id}.easyonly.vcf.gz
+
+    minipileup-parallel_sr_only.sh -i ${id}.easyonly.vcf.gz \
         -r ${ref} \
-        -t 2 \
+        -t ${task.cpus} \
+        --group 30 \
         -o ${id}.minipileup_sr \
         \${sr_crams} \
         \${sr_tissue}
@@ -79,7 +83,7 @@ process run_minipileup_sr_only {
     bcftools view -i 'FILTER="HighConf"' ${id}.final.vcf.gz -Oz -o ${id}.tier1.vcf.gz
     tabix ${id}.tier1.vcf.gz
 
-    bcftools view -i 'FILTER="ModerateConf"' ${id}.final.vcf.gz -Oz -o ${id}.tier2.vcf.gz
+    bcftools view -i 'FILTER="LowConf"' ${id}.final.vcf.gz -Oz -o ${id}.tier2.vcf.gz
     tabix ${id}.tier2.vcf.gz
 
     # --- metrics (standard schema) ---

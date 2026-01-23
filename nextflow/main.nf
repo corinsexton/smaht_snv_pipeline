@@ -25,6 +25,7 @@ params.easy_regions = "/n/data1/hms/dbmi/park/corinne/smaht/test_benchmarking/sm
 params.diff_regions = "/n/data1/hms/dbmi/park/corinne/smaht/test_benchmarking/smaht_snv_pipeline/nextflow/SMaHT_difficult_v2.bed.gz"
 params.ext_regions = "/n/data1/hms/dbmi/park/corinne/smaht/test_benchmarking/smaht_snv_pipeline/nextflow/SMaHT_extreme_v2.bed.gz"
 
+
 def ensureTabixIndex(vcf_path) {
     def tbi_path = file("${vcf_path}.tbi")
     //println "Checking VCF: ${vcf_path}"
@@ -197,7 +198,8 @@ workflow {
         params.centromere_regions,
         params.simple_repeats,
         params.kg_indels,
-        regions_input
+        regions_input,
+        germline_calls_ch
     )
 
     // use VEP for AF filtering

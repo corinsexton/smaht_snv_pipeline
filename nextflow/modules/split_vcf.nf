@@ -1,6 +1,10 @@
 process split_vcf {
     tag "$id"
 
+    cpus 1
+    memory '1G'
+    time '30m'
+
     input:
     tuple val(id), path(vcf), path(tbi)
 
@@ -9,18 +13,12 @@ process split_vcf {
 
     script:
     """
-    # Extract contigs
-    bcftools index -s ${vcf} > contigs.list
+    CHROMS=(chr{1..22} chrX chrY)
 
-    ## Number of chunks to create
-    #N=20
-
-    ## Split contigs evenly into N groups
-    #split -e -n l/\$N contigs.list contigs_
 
     # Create N sub-VCFs
     #for file in contigs_* ; do
-    while read -r c p num; do
+    for c in "\${CHROMS[@]}"; do
         chunk=\$c
         out=chunk_\$c.vcf.gz
 
@@ -28,7 +26,7 @@ process split_vcf {
 
         bcftools view -Oz -o \$out -r \$regions ${vcf}
         bcftools index -t \$out
-    done < contigs.list
+    done
     """
 }
 

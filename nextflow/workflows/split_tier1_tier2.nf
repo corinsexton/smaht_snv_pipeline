@@ -52,7 +52,6 @@ workflow split_tier1_tier2 {
 
     // Step 3: Parallel minipileup on each chunk 
     run_minipileup_parallel(vcf_chunk_metadata, ref_input) 
-    run_minipileup_parallel.out.vcf.view()
     
     // Step 4: Group all chunk outputs per id 
     run_minipileup_parallel.out.vcf 
@@ -60,7 +59,6 @@ workflow split_tier1_tier2 {
         .map { id, chunk_vcfs, chunk_tbis, truth_vcfs, truth_tbis, mp_vcfs, mp_tbis -> 
                 tuple( id, mp_vcfs, mp_tbis, truth_vcfs.unique(), truth_tbis.unique() ) } 
         .set { chunk_groups } 
-    chunk_groups.view() 
     
     // Step 5: Join chunk groups with original metadata and merge 
     chunk_groups 
@@ -68,10 +66,8 @@ workflow split_tier1_tier2 {
         .map { id, mp_vcfs, mp_tbis, truth_vcfs, truth_tbis,
                 vcf, tbi, truth_vcf, truth_vcf_tbi,
                 sr_bams, sr_bais, lr_bams, lr_bais, lr_ont_bams, lr_ont_bais -> 
-                tuple(id, chunk_vcfs, chunk_tbis, vcf, tbi, truth_vcf, truth_tbi) } 
+                tuple(id, mp_vcfs, mp_tbis, vcf, tbi, truth_vcf, truth_vcf_tbi) } 
         .set { merged_minipileups_input } 
-    
-    merged_minipileups_input.view() 
     
     merge_minipileup_chunks(merged_minipileups_input) 
     

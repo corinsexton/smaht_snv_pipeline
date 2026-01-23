@@ -7,7 +7,7 @@
 #
 # Output:
 #   - FILTER: TIER1 / TIER2 (else PASS)
-#   - INFO: SR_ADF, SR_ADR, LR_ADF, LR_ADR, optionally ONT_ADF/ONT_ADR
+#   - INFO: SR_ADF, SR_ADR, PB_ADF, LR_ADR, optionally ONT_ADF/ONT_ADR
 #   - FORMAT + sample columns copied from original VCF when (chrom,pos,ref,alt) match
 
 import argparse, csv, sys
@@ -68,7 +68,7 @@ def get_read_cutoffs(short_cov: int, long_cov: int,
         return cov
 
     # independent cutoffs
-    sr_cutoff = find_cutoff(short_cov, error_rate, target_p)
+    sr_cutoff = find_cutoff(short_cov, error_rate, 1e-5)
     lr_cutoff = find_cutoff(long_cov, error_rate, target_p)
 
     # combined cutoff using total coverage
@@ -76,7 +76,7 @@ def get_read_cutoffs(short_cov: int, long_cov: int,
     combined_total = find_cutoff(total_cov, error_rate, target_p)
 
     # distribute proportionally to coverage, ensure ≥1 of each
-    combined_sr = max(1, round(short_cov / total_cov * combined_total))
+    combined_sr = max(1, round(short_cov / total_cov * float(combined_total)))
     combined_lr = max(1, combined_total - combined_sr)
 
     return {
@@ -132,10 +132,10 @@ def ensure_header_fields(hdr, ont_present):
         hdr.add_line('##INFO=<ID=SR_ADF,Number=2,Type=Integer,Description="Short-read forward depths (REF,ALT)">')
     if "SR_ADR" not in hdr.info:
         hdr.add_line('##INFO=<ID=SR_ADR,Number=2,Type=Integer,Description="Short-read reverse depths (REF,ALT)">')
-    if "LR_ADF" not in hdr.info:
-        hdr.add_line('##INFO=<ID=LR_ADF,Number=2,Type=Integer,Description="Long-read forward depths (REF,ALT)">')
-    if "LR_ADR" not in hdr.info:
-        hdr.add_line('##INFO=<ID=LR_ADR,Number=2,Type=Integer,Description="Long-read reverse depths (REF,ALT)">')
+    if "PB_ADF" not in hdr.info:
+        hdr.add_line('##INFO=<ID=PB_ADF,Number=2,Type=Integer,Description="Long-read forward depths (REF,ALT)">')
+    if "PB_ADR" not in hdr.info:
+        hdr.add_line('##INFO=<ID=PB_ADR,Number=2,Type=Integer,Description="Long-read reverse depths (REF,ALT)">')
     if ont_present:
         if "ONT_ADF" not in hdr.info:
             hdr.add_line('##INFO=<ID=ONT_ADF,Number=2,Type=Integer,Description="ONT forward depths (REF,ALT)">')
@@ -254,8 +254,8 @@ def main():
             # Set INFO counts
             rec.info["SR_ADF"] = (sr_ref_adf, sr_alt_adf)
             rec.info["SR_ADR"] = (sr_ref_adr, sr_alt_adr)
-            rec.info["LR_ADF"] = (lr_ref_adf, lr_alt_adf)
-            rec.info["LR_ADR"] = (lr_ref_adr, lr_alt_adr)
+            rec.info["PB_ADF"] = (lr_ref_adf, lr_alt_adf)
+            rec.info["PB_ADR"] = (lr_ref_adr, lr_alt_adr)
             if ont_name:
                 rec.info["ONT_ADF"] = (ont_ref_adf, ont_alt_adf)
                 rec.info["ONT_ADR"] = (ont_ref_adr, ont_alt_adr)

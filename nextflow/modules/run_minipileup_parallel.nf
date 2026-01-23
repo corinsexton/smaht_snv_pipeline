@@ -1,15 +1,10 @@
 process run_minipileup_parallel {
 
-    publishDir "${params.results_dir}/minipileup",
-    pattern: "${id}.minipileup.vcf.gz*",
-    mode:'copy'
-
     cache 'lenient'
 
-
     cpus 10
-    memory '8G'
-    time '6h'
+    memory '4G'
+    time '2h'
 
     tag "$id"
 
@@ -25,7 +20,7 @@ process run_minipileup_parallel {
     output:
     tuple val(id),
           path(vcf), path(tbi), path(truth_vcf), path(truth_vcf_tbi),
-          path("${id}.minipileup.vcf.gz"), path("${id}.minipileup.vcf.gz.tbi"), emit: vcf
+          path("${id}*.minipileup.vcf.gz"), path("${id}*.minipileup.vcf.gz.tbi"), emit: vcf
 
     script:
     """
@@ -48,16 +43,16 @@ process run_minipileup_parallel {
         ont_crams+=" --ont-cram \${f}"
     done
 
+    chr=\$( basename -s .vcf.gz ${vcf})
+
     minipileup-parallel.sh -i ${vcf} \
         -r ${ref} \
-        -t 10 \
+        -t ${task.cpus} \
         --group 50 \
-        -o ${id}.minipileup \
+        -o ${id}.\${chr}.minipileup \
         \${sr_crams} \
         \${pb_crams} \
         \${ont_crams} 
-
-    tabix ${id}.minipileup.vcf.gz
 
     """
 }

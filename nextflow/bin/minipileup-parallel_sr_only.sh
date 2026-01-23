@@ -16,7 +16,7 @@ Required:
 Optional:
   -o             Output prefix (default: output)
   -t             Threads for parallel xargs (default: nproc)
-  --args         Extra minipileup arguments (default: "-c -C -Q 20 -q 30 -s 0")
+  --args         Extra minipileup arguments (default: "-c -C -Q 30 -q 30 -s 0")
   --group        Number of VCF intervals per batch (default: 100)
 EOF
   exit 1
@@ -26,7 +26,7 @@ INPUT_VCF=""
 REFERENCE_FASTA=""
 OUTPUT_PRFX="output"
 THREADS="$(nproc)"
-MINPILEUP_ARGS="-c -C -Q 20 -q 30 -s 0"
+MINPILEUP_ARGS="-c -C -Q 30 -q 30 -s 0"
 GROUP=100
 
 SR_CRAMS=()
@@ -129,7 +129,7 @@ run_region() {
     local HBAMS=()
     for cram in "${CRAMS[@]}"; do
       local bam="$WORKDIR/$(basename "${cram%.*}")_${safe}.bam"
-      samtools view --reference "$REFERENCE_FASTA" --write-index -b -o "$bam" "$cram" "$first"
+      samtools view --reference "$REFERENCE_FASTA" --write-index -b -o "$bam" "$cram" chr1:10001-10001
       HBAMS+=("$bam")
     done
 
@@ -138,7 +138,8 @@ run_region() {
       -r "$first" \
       "${HBAMS[@]}" | grep '^#' > "$HEADER_VCF"
 
-    rm -f "$WORKDIR"/*.bam "$WORKDIR"/*.csi
+	for b in "${HBAMS[@]}"; do rm -f "$b" "${b}.csi"; done
+
     return 0
   fi
 
@@ -160,7 +161,7 @@ run_region() {
        -r "$region" \
        "${BAMS[@]}" | grep -v '^#' >> "$outvcf" || true
 
-    rm -f "$WORKDIR"/*.bam "$WORKDIR"/*.csi
+	for b in "${BAMS[@]}"; do rm -f "$b" "${b}.csi"; done
   done
 }
 

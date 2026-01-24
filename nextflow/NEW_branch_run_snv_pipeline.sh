@@ -30,14 +30,14 @@
 #  --results_dir ./NEW_branch_results_JINY
 
 
-nextflow run main.nf  \
+nextflow run main.nf \
   --vep_config vep.ini \
   --longread_csv Production_lr.csv \
   --ont_csv Production_ont.csv \
   --shortread_csv Production_sr.csv \
   --input_metadata Production_metadata.csv \
-  --input_vcfs Production_vcfs.csv \
-  --results_dir ./Production_results
+  --input_vcfs Production_vcfs_ss.csv \
+  --results_dir ./Production_results_ss_main
 
 #nextflow run main.nf -resume \
 #  --vep_config vep.ini \

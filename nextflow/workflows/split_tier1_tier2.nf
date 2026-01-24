@@ -2,8 +2,7 @@ nextflow.enable.dsl=2
 
 
 include { run_minipileup_parallel } from '../modules/run_minipileup_parallel.nf'
-include { tier_variants } from '../modules/tier_variants.nf'
-include { filter_binom_fisher } from '../modules/filter_binom_fisher.nf'
+include { tier_variants_binom } from '../modules/tier_variants_binom.nf'
 include { split_vcf } from '../modules/split_vcf.nf'
 include { merge_minipileup_chunks } from '../modules/merge_minipileup_chunks.nf' 
 
@@ -71,12 +70,9 @@ workflow split_tier1_tier2 {
     
     merge_minipileup_chunks(merged_minipileups_input) 
     
-    // Step 6: Provide single merged minipileup VCF to tier_variants 
-    tier_variants( merge_minipileup_chunks.out, regions_input ) 
-    
-    // Step 7: Downstream filters 
-    filter_binom_fisher(tier_variants.out.vcf, regions_input) 
+
+    tier_variants_binom(merge_minipileup_chunks.out,regions_input)
     
     emit: 
-        filter_binom_fisher.out.vcf 
+        tier_variants_binom.out.vcf 
 }

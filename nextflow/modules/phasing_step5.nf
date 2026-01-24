@@ -35,6 +35,7 @@ process phasing_step5 {
         path(step4_tsv), val(sex)
     tuple path(easy_regions), path(diff_regions), path(ext_regions),
         path(easy_regions_tbi), path(diff_regions_tbi), path(ext_regions_tbi)
+    tuple path(ref), path(ref_index), path(ref_dict)
 
 
     output:
@@ -48,7 +49,7 @@ process phasing_step5 {
 
     script:
     """
-    phasing_step2_phase_mosaic.py -w 8 -t ${step4_tsv} -b ${lr_bams} -s ${sex} -i ${id}
+    phasing_step2_phase_mosaic.py -w 8 -t ${step4_tsv} -b ${lr_bams} -s ${sex} -i ${id} -r ${ref}
 
     sort -k1,1V -k2,2n ${id}_phasing_tags.tsv | bgzip - -o ${id}_phasing_tags.tsv.gz
     tabix -s1 -b2 -e2 ${id}_phasing_tags.tsv.gz
@@ -58,7 +59,7 @@ process phasing_step5 {
          -Oz -o annotated.vcf.gz ${vcf}
     tabix annotated.vcf.gz
 
-    bcftools view -i '(FILTER="TIER2") || (INFO/PB_PHASING="MOSAIC_PHASED") || (INFO/PB_PHASING="UNABLE_TO_PHASE")' annotated.vcf.gz -Oz -o ${id}.phased.vcf.gz
+    bcftools view -i '(FILTER="LowConf") || (INFO/PB_PHASING="MOSAIC_PHASED") || (INFO/PB_PHASING="UNABLE_TO_PHASE")' annotated.vcf.gz -Oz -o ${id}.phased.vcf.gz
     tabix ${id}.phased.vcf.gz
 
     bcftools view -i '(INFO/PB_PHASING="ARTIFACT") || (INFO/PB_PHASING="GERMLINE")' annotated.vcf.gz -Oz -o ${id}.phased.fail.vcf.gz

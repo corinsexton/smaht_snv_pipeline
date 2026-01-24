@@ -24,7 +24,8 @@ process merge_minipileup_chunks {
     tuple val(id),
           path(orig_vcf), path(orig_tbi),
           path(truth_vcf), path(truth_tbi),
-          path("${id}.minipileup.merged.vcf.gz")
+          path("${id}.minipileup.merged.vcf.gz"),
+          path("${id}.minipileup.merged.vcf.gz.tbi")
 
     script:
     """

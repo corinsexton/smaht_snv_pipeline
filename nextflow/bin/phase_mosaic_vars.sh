@@ -6,12 +6,15 @@ set -euo pipefail
 #
 # Requires:
 #   - bcftools
+#   - bedtools
 #   - tabix
 #   - bgzip
 #   - python3 (including pysam)
 #   - phasing_step1_get_closest_germline.sh
 #   - phasing_step2_phase_mosaic.py
 #
+#  Note: this script assumes that the input somatic VCF only contains SNVs
+#        Indels should be removed prior to running this step
 #################################################################################
 
 usage() {
@@ -21,6 +24,7 @@ Usage: $0 \\
     -v GERMLINE_VCF \\
     -w INPUT_VCF \\
     -s SEX \\
+    -r REFERENCE_FASTA \\
     [--pb-cram CRAM ...] \\
     [-t THREADS]
 
@@ -28,13 +32,14 @@ Required arguments:
     -i          Sample ID
     -v          Germline VCF
     -w          Input mosaic VCF (SNV VCF)
-    -s          Sex (M/F)
-	--pb-cram   PacBio long-read CRAM with .crai file, also accept BAM with .bai or .csi index (repeatable)
+    -s          Sex: "male", "female", "unknown"
+    -r          Reference FASTA
+    --pb-cram   PacBio long-read CRAM with .crai file, also accept BAM with .bai or .csi index (repeatable)
 
     -t          Threads for phasing_step2_phase_mosaic.py
 
 Example:
-    $0 -i SMHT005 -v SMHT005_germline.vcf.gz -w SMHT005-3A_mosaic.vcf.gz --pb-cram a.bam --pb-cram b.bam -s M -t 8
+    $0 -i SMHT005 -v SMHT005_germline.vcf.gz -w SMHT005-3A_mosaic.vcf.gz --pb-cram a.bam --pb-cram b.bam -r reference.fasta -s male -t 8
 
 EOF
   exit 1
@@ -48,6 +53,7 @@ SAMPLE_ID=""
 GERMLINE_VCF=""
 INPUT_VCF=""
 SEX=""
+REFERENCE=""
 THREADS="$(nproc)"
 
 PB_CRAMS=()
@@ -62,9 +68,10 @@ while [[ $# -gt 0 ]]; do
     -v) GERMLINE_VCF="$2"; shift 2;;
     -w) INPUT_VCF="$2"; shift 2;;
     -s) SEX="$2"; shift 2;;
+    -r) REFERENCE="$2"; shift 2;;
     -t) THREADS="$2"; shift 2;;
 
-	--pb-cram) PB_CRAMS+=("$2"); shift 2;;
+    --pb-cram) PB_CRAMS+=("$2"); shift 2;;
 
     -h|--help) usage;;
     *) echo "Unknown option: $1"; usage;;
@@ -81,11 +88,13 @@ done
 [[ -n "$SEX" ]]            || { echo "Error: -s SEX is required"; usage; }
 
 [[ "$THREADS" =~ ^[0-9]+$ ]] || { echo "Error: THREADS (-t) must be integer"; exit 1; }
+(( THREADS > 0 )) || { echo "Error: THREADS (-t) must be > 0"; exit 1; }
 
 [[ -f "$GERMLINE_VCF" ]] || { echo "Error: Germline VCF not found: $GERMLINE_VCF"; exit 1; }
 [[ -f "$INPUT_VCF" ]]    || { echo "Error: Input VCF not found: $INPUT_VCF"; exit 1; }
 
-
+[[ -f "$REFERENCE" ]]    || { echo "Error: Input reference FASTA not found: $REFERENCE"; exit 1; }
+[[ -f "${REFERENCE}.fai" ]] || { echo "Error: Reference FASTA index not found: ${REFERENCE}.fai"; exit 1; }
 
 # CRAM/BAM checks (index check too)
 if (( ${#PB_CRAMS[@]} == 0 )); then
@@ -118,6 +127,7 @@ fi
 #################################################################################
 
 command -v bcftools >/dev/null 2>&1 || { echo "Error: bcftools not found"; exit 1; }
+command -v bedtools  >/dev/null 2>&1 || { echo "Error: bedtools not found"; exit 1; }
 command -v tabix     >/dev/null 2>&1 || { echo "Error: tabix not found"; exit 1; }
 command -v bgzip     >/dev/null 2>&1 || { echo "Error: bgzip not found"; exit 1; }
 command -v python3   >/dev/null 2>&1 || { echo "Error: python3 not found"; exit 1; }
@@ -125,26 +135,25 @@ command -v phasing_step2_phase_mosaic.py >/dev/null 2>&1 || { echo "Error: phasi
 command -v phasing_step1_get_closest_germline.sh >/dev/null 2>&1 || { echo "Error: phasing_step1_get_closest_germline.sh not found in PATH"; exit 1; }
 
 #################################################################################
-# Work directory
+# Output / intermediate files
 #################################################################################
 
-WORKDIR="$(mktemp -d phasing_pipeline.XXXXXX)"
-trap 'rm -rf "$WORKDIR"' EXIT
-
-echo "Workdir: $WORKDIR"
-
-STEP4_TSV="${WORKDIR}/${SAMPLE_ID}.germline_map.tsv"
-TAGS_TXT="${WORKDIR}/${SAMPLE_ID}_phasing_tags.tsv"
+# ---- File names ----
+STEP4_TSV="${SAMPLE_ID}.germline_map.tsv"
+TAGS_TXT="${SAMPLE_ID}_phasing_tags.tsv"
 TAGS_GZ="${TAGS_TXT}.gz"
-ANNOTATED_VCF="${WORKDIR}/annotated.vcf.gz"
+ANNOTATED_VCF="${SAMPLE_ID}.annotated.vcf.gz"
 FINAL_VCF="${SAMPLE_ID}.phased.vcf.gz"
 
+# ---- Trap to clean intermediate files  ----
+#trap "rm -f '$STEP4_TSV' '$TAGS_TXT' '$TAGS_GZ'" EXIT
+
 #################################################################################
-# STEP 4 – long-read phasing tag generation
+# Long-read phasing tag generation
 #################################################################################
 
 echo "------------------------------------------------------------"
-echo "[STEP 4] Running phasing_step1_get_closest_germline.sh"
+echo "Running phasing_step1_get_closest_germline.sh"
 echo "------------------------------------------------------------"
 
 phasing_step1_get_closest_germline.sh \
@@ -152,23 +161,22 @@ phasing_step1_get_closest_germline.sh \
     -v "$GERMLINE_VCF" \
     -w "$INPUT_VCF"
 
-# generates "${WORKDIR}/${SAMPLE_ID}.germline_map.tsv" (STEP4_TSV)
-[[ -s "$STEP4_TSV" ]] || { echo "Error: Step4 TSV is empty"; exit 1; }
+[[ -s "$STEP4_TSV" ]] || { echo "Error: closest germline TSV is empty"; exit 1; }
 
 #################################################################################
-# STEP 5 – long-read haplotype classification
+# Long-read haplotype classification
 #################################################################################
 
 echo "------------------------------------------------------------"
-echo "[STEP 5] Running phasing_step2_phase_mosaic.py"
+echo "Running phasing_step2_phase_mosaic.py"
 echo "------------------------------------------------------------"
-
 
 # -b is a multi-arg, ie: -b bam1.bam  bam2.bam
 phasing_step2_phase_mosaic.py \
-    -w "$THREADS" \
-    -t "$STEP4_TSV" \
-    -b "$PB_CRAMS" \
+    --workers "$THREADS" \
+    --tsv "$STEP4_TSV" \
+    --reference "$REFERENCE" \
+    -b "${PB_CRAMS[@]}" \
     -s "$SEX" \
     -i "$SAMPLE_ID"
 
@@ -191,8 +199,8 @@ echo "Annotating VCF with phasing information..."
 
 bcftools annotate \
   -a "$TAGS_GZ" \
-  -c CHROM,POS,PHASING \
-  -H '##INFO=<ID=PHASING,Number=1,Type=String,Description="Phasing classification from long-read haplotyping">' \
+  -c CHROM,POS,PB_PHASING \
+  -H '##INFO=<ID=PB_PHASING,Number=1,Type=String,Description="Phasing classification from long-read haplotyping">' \
   -Oz -o "$ANNOTATED_VCF" \
   "$INPUT_VCF"
 
@@ -202,10 +210,10 @@ tabix "$ANNOTATED_VCF"
 # Filter for passing variants
 #################################################################################
 
-echo "Filtering variants for TIER2 / interesting phasing categories..."
+echo "Filtering variants for SR-only / interesting phasing categories..."
 
 bcftools view \
-  -i '(FILTER="TIER2") || (INFO/PHASING="MOSAIC_PHASED") || (INFO/PHASING="UNABLE_TO_PHASE")' \
+  -i '(INFO/CrossTech=0) || (INFO/PB_PHASING="MOSAIC_PHASED") || (INFO/PB_PHASING="UNABLE_TO_PHASE")' \
   "$ANNOTATED_VCF" \
   -Oz -o "$FINAL_VCF"
 

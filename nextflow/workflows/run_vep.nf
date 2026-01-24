@@ -7,13 +7,8 @@
 nextflow.enable.dsl=2
 
 // module imports
-include { checkVCFheader; checkVCF } from '../modules/check_VCF.nf'
-include { generateSplits } from '../modules/generate_splits.nf'
-include { mergeVCF } from '../modules/merge_VCF.nf'  
-include { runVEP as runVEPonVCF } from '../modules/run_vep.nf'
 include { runVEP } from '../modules/run_vep.nf'
 include { filter_vep } from '../modules/filter_vep.nf'
-include { split_snvs_indels } from '../modules/split_snvs_indels.nf'
 
 // print usage
 if (params.help) {

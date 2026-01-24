@@ -5,7 +5,6 @@
 
 nextflow.enable.dsl=2
 
-include { preprocess_vcf }       from '../modules/preprocess_vcf.nf'
 include { filter_centromere_segdups }  from '../modules/filter_centromere_segdups.nf'
 include { filter_poe }  from '../modules/filter_panel_errors.nf'
 include { filter_clustered_variants }  from '../modules/filter_clustered_variants.nf'

@@ -50,8 +50,8 @@ workflow run_vep {
   main:
 
 
-    runVEPonVCF(inputs,'mosaic')
-    filter_vep(runVEPonVCF.out, 'mosaic')
+    runVEP(inputs,'mosaic')
+    filter_vep(runVEP.out, 'mosaic')
 
   emit:
     filter_vep.out.vcf

@@ -213,9 +213,9 @@ class MinipileupVCF:
                         # Select correct ALT index
                         i = self.select_alt_index(record, ALT)
                         if i is None:
+                            # not found in minipileup alts, remove variant
                             print(f"ERROR: Could not find ALT {ALT} in record at {record.chrom}:{record.pos}")
                             continue
-                            #sys.exit(f"ERROR: Could not find ALT {ALT} in record at {record.chrom}:{record.pos} with ALTs {record.alts}")
                         # Get counts for all samples
                         for sample in record.samples:
                             sc = self.add_counts(record, sample, i)

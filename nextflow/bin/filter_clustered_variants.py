@@ -35,6 +35,8 @@ def filter_clustered(input_vcf, output_vcf, window=50):
     vcf_in.close()
     vcf_out.close()
 
+    if output_vcf.endswith(".gz"): pysam.tabix_index(output_vcf,preset="vcf", force=True)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Remove clustered variants (SNVs + indels) within N bp")
     parser.add_argument("input_vcf", help="Input VCF file (bgzipped or not)")

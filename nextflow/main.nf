@@ -125,17 +125,98 @@ input_sr
     }
     .set { sr_by_donor }
 
+// all SR ids, keyed by donor, so we can “project” LR donor aggregates onto every SR id
+input_sr
+    .map { id, crams, crais ->
+        def (donor, tissue) = id.tokenize('-')
+        tuple(donor, id, tissue)   // key=donor, keep id and tissue
+    }
+    .set { sr_ids_by_donor }
+//sr_ids_by_donor.view()
+// ---------- get all donor lr for minipileup --------
+//
+// Extract donor + tissue, group by donor, and include CRAMs + CRAIs
+//
+input_lr
+    .map { id, crams, crais ->
+        def (donor, tissue) = id.tokenize('-')
+        tuple(id, donor, crams, crais)
+    }
+    .groupTuple(by: 1)   // group by donor
+    .map { ids, donor, crams, crais ->
+        // grouped_entries contains tuples: [id, donor, crams, crais]
+
+        // Flatten donor-level crams & crais (maintains pairing)
+        def flat_crams  = crams.flatten()
+        def flat_crais  = crais.flatten()
+
+        // Expand tissue labels so each CRAM has one
+        def expanded_ids = []
+        ids.eachWithIndex { id, i ->
+            expanded_ids.addAll( Collections.nCopies(crams[i].size(), id) )
+        }
+
+        // Return donor-level aggregate
+        tuple(donor, flat_crams, flat_crais, expanded_ids)
+    }
+    .set { lr_donor_agg }
+
+//lr_donor_agg.view()
+
+// Project LR donor aggregate onto every SR id for that donor
+sr_ids_by_donor
+    .combine(lr_donor_agg, by: 0) 
+    .map { donor, id, tissue, lr_crams, lr_crais, lr_tissues ->
+        tuple(id, lr_crams, lr_crais, lr_tissues)
+    }
+    .set { lr_by_donor }
+
+// ---------- get all donor ont for minipileup --------
+//
+// Extract donor + tissue, group by donor, and include CRAMs + CRAIs
+//
+input_ont
+    .map { id, crams, crais ->
+        def (donor, tissue) = id.tokenize('-')
+        tuple(id, donor, crams, crais)
+    }
+    .groupTuple(by: 1)   // group by donor
+    .map { ids, donor, crams, crais ->
+        // grouped_entries contains tuples: [id, donor, tissue, crams, crais]
+
+        // Flatten donor-level crams & crais (maintains pairing)
+        def flat_crams  = crams.flatten()
+        def flat_crais  = crais.flatten()
+
+        // Expand tissue labels so each CRAM has one
+        def expanded_ids = []
+        ids.eachWithIndex { id, i ->
+            expanded_ids.addAll( Collections.nCopies(crams[i].size(), id) )
+        }
+
+        // Return donor-level aggregate
+        tuple(donor, flat_crams, flat_crais, expanded_ids)
+    }
+    .set { ont_donor_agg }
+
+// Project LR donor aggregate onto every SR id for that donor
+sr_ids_by_donor
+    .combine(ont_donor_agg, by: 0) 
+    .map { donor, id, tissue, lr_crams, lr_crais, lr_tissues ->
+        tuple(id, lr_crams, lr_crais, lr_tissues)
+    }
+    .set { ont_by_donor }
 
 // ---------- merge all by sample ID ----------
 def input_bams = input_sr
-    .join(input_lr)
-    .join(input_ont)
-    .map { id, sr_crams, sr_crais, lr_crams, lr_crais, ont_crams, ont_crais ->
+    .join(lr_by_donor)
+    .join(ont_by_donor)
+    .map { id, sr_crams, sr_crais, lr_crams, lr_crais, lr_tissues, ont_crams, ont_crais, ont_tissues ->
             if( !sr_crams || sr_crams.size() == 0 ) {
             throw new IllegalArgumentException("Sample ${id} has no short-read CRAMs — at least one required")
             }
 
-        tuple(id, sr_crams, sr_crais, lr_crams, lr_crais, ont_crams, ont_crais)
+        tuple(id, sr_crams, sr_crais, lr_crams, lr_crais, lr_tissues, ont_crams, ont_crais, ont_tissues)
     }
 
 /////

@@ -33,7 +33,8 @@ process tier_variants_binom {
     tier_filter_variants_SR_PB_ONT.py \
         -i ${vcf} \
         -m ${minipileup_vcf} \
-        -o "${id}.tiered.vcf.gz"
+        --current_tissue ${id} \
+        -o "${id}.tiered.vcf.gz" 
 
 
     # --- metrics (standard schema) ---

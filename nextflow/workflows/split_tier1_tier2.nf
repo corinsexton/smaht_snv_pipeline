@@ -15,14 +15,14 @@ workflow split_tier1_tier2 {
         regions_input
 
     main: 
+
     // Step 1: run minipileup to get counts in SR and LR
     vcf_inputs
       .join(bam_inputs)     // join on 'id'
-      .map { id, vcf, tbi, truth_vcf, truth_vcf_tbi, sr_bams, sr_bais, lr_bams, lr_bais, lr_ont_bams, lr_ont_bais ->
-        tuple(id, vcf, tbi, truth_vcf, truth_vcf_tbi, sr_bams, sr_bais, lr_bams, lr_bais, lr_ont_bams, lr_ont_bais)
+      .map { id, vcf, tbi, truth_vcf, truth_vcf_tbi, sr_bams, sr_bais, lr_bams, lr_bais, lr_tissues, lr_ont_bams, lr_ont_bais, lr_ont_tissues ->
+        tuple(id, vcf, tbi, truth_vcf, truth_vcf_tbi, sr_bams, sr_bais, lr_bams, lr_bais, lr_tissues, lr_ont_bams, lr_ont_bais, lr_ont_tissues)
       }
       .set { vcf_bam_joined }
-
 
 
      /* * Step 1: Split VCF into 3 or 4 chunks per sample */ 
@@ -44,9 +44,9 @@ workflow split_tier1_tier2 {
     ch_split_vcf_chunks 
         .combine(vcf_bam_joined, by: 0) 
         .map { id, chunk_vcf, chunk_tbi, full_vcf, full_tbi, truth_vcf, truth_vcf_tbi,
-                sr_bams, sr_bais, lr_bams, lr_bais, lr_ont_bams, lr_ont_bais -> 
+                sr_bams, sr_bais, lr_bams, lr_bais, lr_tissues, lr_ont_bams, lr_ont_bais, lr_ont_tissues -> 
                 tuple(id, chunk_vcf, chunk_tbi, truth_vcf, truth_vcf_tbi, 
-                sr_bams, sr_bais, lr_bams, lr_bais, lr_ont_bams, lr_ont_bais) } 
+                sr_bams, sr_bais, lr_bams, lr_bais, lr_tissues, lr_ont_bams, lr_ont_bais, lr_ont_tissues) } 
         .set { vcf_chunk_metadata } 
 
     // Step 3: Parallel minipileup on each chunk 
@@ -64,7 +64,7 @@ workflow split_tier1_tier2 {
         .join(vcf_bam_joined) 
         .map { id, mp_vcfs, mp_tbis, truth_vcfs, truth_tbis,
                 vcf, tbi, truth_vcf, truth_vcf_tbi,
-                sr_bams, sr_bais, lr_bams, lr_bais, lr_ont_bams, lr_ont_bais -> 
+                sr_bams, sr_bais, lr_bams, lr_bais, lr_tissues, lr_ont_bams, lr_ont_bais, lr_ont_tissues -> 
                 tuple(id, mp_vcfs, mp_tbis, vcf, tbi, truth_vcf, truth_vcf_tbi) } 
         .set { merged_minipileups_input } 
     

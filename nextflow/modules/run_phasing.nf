@@ -1,10 +1,10 @@
 process run_phasing {
 
-    publishDir "${params.results_dir}/phasing/intermediate_files",
+    publishDir "${params.results_dir}/11_phasing/intermediate_files",
     pattern: "${id}*.tsv*",
     mode:'copy'
 
-    publishDir "${params.results_dir}/phasing/",
+    publishDir "${params.results_dir}/11_phasing/",
     pattern: "${id}.phased.vcf.gz*",
     mode:'copy'
 

@@ -199,10 +199,35 @@ run_region() {
       samtools view --reference "$REFERENCE_FASTA" --write-index -b -o "$bam" "$cram" chr1:10001-10001
       HBAMS+=("$bam")
     done
+
+	# Run minipileup for this region (avoid piping so segfault can't break the shell pipeline)
+    tmp_out="${WORKDIR}/minipileup.$$.$RANDOM.out"
+
     minipileup -f "$REFERENCE_FASTA" \
       $MINPILEUP_ARGS \
-      -r "$key" \
-      "${HBAMS[@]}" | grep '^#' > "$HEADER_VCF"
+      -r chr1:10001-10001 \
+      "${HBAMS[@]}" > "$tmp_out"
+    mp_status=$?
+
+    if [[ $mp_status -eq 139 ]]; then
+      echo "Seg fault at $region" >&2
+      rm -f "$tmp_out"
+      for b in "${HBAMS[@]}"; do rm -f "$b" "${b}.csi"; done
+      continue
+    elif [[ $mp_status -ne 0 ]]; then
+      # keep prior behavior: don't kill the overall job on other minipileup failures
+      rm -f "$tmp_out"
+      true
+    else
+      grep '^#' "$tmp_out" >> "$HEADER_VCF" || true
+      rm -f "$tmp_out"
+    fi
+
+    #minipileup -f "$REFERENCE_FASTA" \
+    #  $MINPILEUP_ARGS \
+    #  -r chr1:10001-10001 \
+    #  "${HBAMS[@]}" | grep '^#' > "$HEADER_VCF"
+
     # Cleanup header-only BAMs
     for b in "${HBAMS[@]}"; do rm -f "$b" "${b}.csi"; done
 
@@ -278,7 +303,7 @@ else
     run_region "$first_line" 1 "${ALL_CRAMS[@]}"
     
     [[ -s "$HEADER_VCF" ]] || { echo "Error: header not generated"; exit 1; }
-    
+
     # Parallel execution
     echo "Running minipileup in parallel on intervals..."
     grep -Ev '^[[:space:]]*($|#)' "$GROUPED" | \

@@ -1,6 +1,6 @@
 process merge_minipileup_chunks {
 
-    publishDir "${params.results_dir}/minipileup",
+    publishDir "${params.results_dir}/9_minipileup",
     pattern: "${id}.minipileup.merged.vcf.gz*",
     mode:'copy'
     

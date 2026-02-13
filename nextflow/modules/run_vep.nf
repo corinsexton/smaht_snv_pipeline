@@ -18,7 +18,7 @@ process runVEP {
   Tuple of original VCF, split VCF file after running VEP, tabix index of that file, vep config file, a output dir, and the index type of VCF file
   */
 
-  publishDir "${params.results_dir}/vep_annotated/${filter_type}",
+  publishDir "${params.results_dir}/7_vep_annotated/${filter_type}",
     pattern: "${out}*",
     mode: 'copy'
   
@@ -40,7 +40,7 @@ process runVEP {
   
   vep_cmd = """
             vep -i ${original_file} \
-            --custom file=/custom_ann/gnomad.joint.v4.1.sites.reduced.vcf.gz,short_name=gnomad4.1,format=vcf,type=exact,coords=0,fields=AF_grpmax_joint \
+            --custom file=/custom_ann/SMAFIS5AZ2P4.vcf.gz,short_name=gnomad4.1,format=vcf,type=exact,coords=0,fields=AF_grpmax_joint \
             --vcf --config ${vep_config}  -o out.vcf
             """
   

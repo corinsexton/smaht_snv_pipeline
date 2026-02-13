@@ -1,10 +1,10 @@
 process filter_poe {
 
-    publishDir "${params.results_dir}/poe_filtered",
+    publishDir "${params.results_dir}/6_poe_filtered",
     pattern: "${id}.pon.filtered.vcf.gz*",
     mode:'copy'
 
-    publishDir "${params.results_dir}/poe_filtered",
+    publishDir "${params.results_dir}/6_poe_filtered",
     pattern: "${id}.filter_poe.*.tsv",
     mode:'copy'
 

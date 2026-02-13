@@ -1,11 +1,11 @@
 process filter_centromere_segdups {
 
-    publishDir "${params.results_dir}/centromere_segdups_filtered",
+    publishDir "${params.results_dir}/5_centromere_segdups_filtered",
     pattern: "${id}.filtered.vcf.gz*",
     mode:'copy'
 
 
-    publishDir "${params.results_dir}/centromere_segdups_filtered",
+    publishDir "${params.results_dir}/5_centromere_segdups_filtered",
     pattern: "${id}.filter_centromere_segdups.*.tsv",
     mode:'copy'
 

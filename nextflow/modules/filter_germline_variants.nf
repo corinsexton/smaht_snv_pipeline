@@ -1,12 +1,12 @@
 process filter_germline_variants {
 
 
-    publishDir "${params.results_dir}/germline_filtered",
+    publishDir "${params.results_dir}/3_germline_filtered",
     pattern: "${id}.nogermline.vcf.gz*",
     mode:'copy'
 
 
-    publishDir "${params.results_dir}/germline_filtered",
+    publishDir "${params.results_dir}/3_germline_filtered",
     pattern: "${id}.filter_germline.*.tsv",
     mode:'copy'
 
@@ -35,8 +35,11 @@ process filter_germline_variants {
     script:
     """
 
+    bcftools view -o tmp_germline.vcf.gz ${germline_vcf} --write-index=tbi -f '.' -Ob
+	
+
     bcftools isec -n~01 -p isec_tmp  \
-        ${germline_vcf} \
+        tmp_germline.vcf.gz \
         ${vcf}
 
     mv isec_tmp/0001.vcf ${id}.nogermline.vcf

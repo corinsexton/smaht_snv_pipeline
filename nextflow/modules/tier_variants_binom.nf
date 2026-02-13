@@ -1,10 +1,10 @@
 process tier_variants_binom {
 
-    publishDir "${params.results_dir}/tiered_variants",
+    publishDir "${params.results_dir}/10_tiered_variants",
     pattern: "${id}.tiered.vcf.gz*",
     mode:'copy'
 
-    publishDir "${params.results_dir}/tiered_variants",
+    publishDir "${params.results_dir}/10_tiered_variants",
     pattern: "${id}.tier.metrics.tsv",
     mode:'copy'
 

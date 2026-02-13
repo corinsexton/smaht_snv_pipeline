@@ -15,7 +15,7 @@ process filter_vep {
 
   label 'vep'
 
-  publishDir "${params.results_dir}/vep_filtered/${filter_value}",
+  publishDir "${params.results_dir}/8_vep_filtered/${filter_value}",
     pattern: "${out_file}.gz*",
     mode: 'copy'
 

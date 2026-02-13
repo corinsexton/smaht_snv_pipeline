@@ -6,7 +6,7 @@ process preprocess_vcf {
     memory '4G'
     time '30m'
 
-    publishDir "${params.results_dir}/pass_filtered",
+    publishDir "${params.results_dir}/1_pass_filtered",
     pattern: "${id}.preprocess.*.tsv",
     mode:'copy'
 
@@ -29,11 +29,11 @@ process preprocess_vcf {
     if grep -q -m1 'FEX' header.txt; then
         # this is only for RUFUS files (FEX=PASS)
 	    bcftools norm --check-ref x -m- -f ${ref} ${vcf} -Ou \
-          | bcftools view -i 'FILTER=="PASS" || INFO/FEX == "PASS"' -Oz -o ${id}.norm.PASS.vcf.gz -Wtbi
+          | bcftools view -v snps,indels -i 'FILTER=="PASS" || INFO/FEX == "PASS"' -Oz -o ${id}.norm.PASS.vcf.gz -Wtbi
 	    bcftools norm -a -Oz -o ${id}.norm.PASS.atom.vcf.gz ${id}.norm.PASS.vcf.gz -Wtbi
     elif grep -q -m1 'MEI' header.txt; then
         # for longcallD
-	    bcftools view -v snps -Ou ${vcf} | bcftools norm --check-ref x -m- -f ${ref} - -Ou \
+	    bcftools view -v snps,indels -Ou ${vcf} | bcftools norm --check-ref x -m- -f ${ref} - -Ou \
           | bcftools view -i 'FILTER=="PASS"' -Oz -o ${id}.norm.PASS.vcf.gz -Wtbi
 	    bcftools norm -a -Oz -o ${id}.norm.PASS.atom.vcf.gz ${id}.norm.PASS.vcf.gz -Wtbi
     else

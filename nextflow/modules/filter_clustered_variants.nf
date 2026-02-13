@@ -1,11 +1,11 @@
 process filter_clustered_variants {
 
-    publishDir "${params.results_dir}/clusters_filtered",
+    publishDir "${params.results_dir}/4_clusters_filtered",
     pattern: "${id}.filtered.clusters.vcf.gz*",
     mode:'copy'
 
 
-    publishDir "${params.results_dir}/clusters_filtered",
+    publishDir "${params.results_dir}/4_clusters_filtered",
     pattern: "${id}.filter_clustered.*.tsv",
     mode:'copy'
 

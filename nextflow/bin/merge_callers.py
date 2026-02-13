@@ -270,13 +270,13 @@ def main(args):
     for caller_vcf in args.input_vcf:
         caller, vcf_path = caller_vcf.split(":", 1)
 
-        if caller.split("_")[0] == "TNhaplotyper2":
+        if caller == "TNhaplotyper2":
             handler = TNhaplotyper2Vcf(vcf_path)
-        elif caller.split("_")[0] == "Strelka2":
+        elif caller == "Strelka2":
             handler = Strelka2Vcf(vcf_path)
-        elif caller.split("_")[0] == "longcallD":
+        elif caller == "longcallD":
             handler = longcallDVcf(vcf_path)
-        elif caller.split("_")[0] == "RUFUS":
+        elif caller == "RUFUS":
             handler = RUFUSVcf(vcf_path)
 
         caller_handlers.append(handler)

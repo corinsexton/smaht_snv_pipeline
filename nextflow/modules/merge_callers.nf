@@ -7,11 +7,11 @@ process merge_callers {
     memory '16G'
     time '30m'
 
-    publishDir "${params.results_dir}/merged_vcf",
+    publishDir "${params.results_dir}/2_merged_vcf",
     pattern: "${id}.merged.*.tsv",
     mode:'copy'
 
-    publishDir "${params.results_dir}/merged_vcf",
+    publishDir "${params.results_dir}/2_merged_vcf",
     pattern: "${id}.merged.vcf.gz*",
     mode:'copy'
 

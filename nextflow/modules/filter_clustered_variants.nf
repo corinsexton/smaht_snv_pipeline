@@ -32,9 +32,9 @@ process filter_clustered_variants {
     script:
     """
 
-    bcftools view -v snps ${vcf}  -Oz -o tmp.vcf.gz
-    tabix tmp.vcf.gz
-    filter_clustered_variants.py --window 50 tmp.vcf.gz ${id}.filtered.clusters.vcf.gz
+    #bcftools view -v snps ${vcf}  -Oz -o tmp.vcf.gz
+    #tabix tmp.vcf.gz
+    filter_clustered_variants.py --window 50 ${vcf} ${id}.filtered.clusters.vcf.gz
 
 
     # --- metrics (standard schema) ---

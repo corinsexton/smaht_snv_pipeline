@@ -38,7 +38,7 @@ process filter_poe {
     # optional params
     #--threads 2 --failed-out failed.vcf
 
-    bcftools view -Oz ${id}.pon.filtered.vcf > ${id}.pon.filtered.vcf.gz
+    bcftools view -v snps -Oz ${id}.pon.filtered.vcf > ${id}.pon.filtered.vcf.gz
     tabix ${id}.pon.filtered.vcf.gz
 
      # --- metrics (standard schema) ---

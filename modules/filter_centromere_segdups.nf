@@ -12,7 +12,7 @@ process filter_centromere_segdups {
 
     cpus 1
     memory '4G'
-    time '30m'
+    time '60m'
 
     tag "$id"
 
@@ -35,26 +35,12 @@ process filter_centromere_segdups {
 
     script:
     """
-    # Exclude variants in UCSC SegDup regions, centromeres, and >2 x avg_depth
-    bcftools view -T ^${ucsc_regions} ${vcf} | \
-        bcftools view -T ^${centromere_regions} - | \
-        bcftools view -T ^${simple_repeat_regions} -Ob -o filtered.vcf.gz
 
-    mv filtered.vcf.gz ${id}.filtered.vcf.gz
-    tabix -f ${id}.filtered.vcf.gz
-
-    # Expand 1kg indels by ±5 bp and filter filtered.vcf.gz
-    bcftools query -f'%CHROM\t%POS0\t%END\n' ${kg_indels} \
-      | awk -v OFS='\t' -v s=5 '{start=\$2-s; if(start<0) start=0; end=\$3+s; print \$1,start,end}' \
-      | bedtools merge -i - > 1kg.slop5.bed
-    
-    # Now exclude filtered.vcf.gz variants that fall in those regions
-    bcftools view -T ^1kg.slop5.bed -Ob -o filtered.vcf.gz ${id}.filtered.vcf.gz
-
-    mv filtered.vcf.gz ${id}.filtered.vcf.gz
-    tabix -f ${id}.filtered.vcf.gz
-
-
+    filter_regions_keep_fails.py --segdup ${ucsc_regions} \
+                                 --centromere ${centromere_regions} \
+                                 --simple-repeat ${simple_repeat_regions} \
+                                 --kg-indels ${kg_indels} --kg-slop 5 \
+                                 ${vcf} ${id}.filtered.vcf.gz 
 
     # --- metrics (standard schema) ---
     BEFORE_VCF=${vcf}

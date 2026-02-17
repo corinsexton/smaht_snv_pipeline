@@ -37,7 +37,7 @@ process preprocess_vcf {
           | bcftools view -i 'FILTER=="PASS"' -Oz -o ${id}.norm.PASS.vcf.gz -Wtbi
 	    bcftools norm -a -Oz -o ${id}.norm.PASS.atom.vcf.gz ${id}.norm.PASS.vcf.gz -Wtbi
     else
-	    bcftools norm --check-ref x -m- -f ${ref} ${vcf} -Ou \
+	    bcftools view -v snps,indels -Ou ${vcf} | bcftools norm --check-ref x -m- -f ${ref} - -Ou \
           | bcftools view -i 'FILTER=="PASS"' -Oz -o ${id}.norm.PASS.vcf.gz -Wtbi
 	    bcftools norm -a -Oz -o ${id}.norm.PASS.atom.vcf.gz ${id}.norm.PASS.vcf.gz -Wtbi
     fi

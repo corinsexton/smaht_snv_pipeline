@@ -1,14 +1,14 @@
 process run_minipileup_sr_only {
 
-    publishDir "${params.results_dir}/11_minipileup_sr",
+    publishDir "${params.results_dir}/12_minipileup_sr",
     pattern: "${id}.minipileup_sr.vcf.gz",
     mode:'copy'
 
-    publishDir "${params.results_dir}/12_final",
+    publishDir "${params.results_dir}/13_final",
     pattern: "${id}.final.vcf.gz*",
     mode:'copy'
 
-    publishDir "${params.results_dir}/12_final",
+    publishDir "${params.results_dir}/13_final",
     pattern: "${id}.final.*.tsv",
     mode:'copy'
 

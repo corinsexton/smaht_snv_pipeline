@@ -199,13 +199,40 @@ input_ont
     }
     .set { ont_donor_agg }
 
-// Project LR donor aggregate onto every SR id for that donor
+// 1. Convert the aggregated ONT channel into a single lookup Map
+ont_donor_map = ont_donor_agg
+    .map { donor, flat_crams, flat_crais, expanded_ids ->
+        // Prepare as key-value pairs: [key, [values]]
+        tuple(donor, tuple(flat_crams, flat_crais, expanded_ids))
+    }
+    .toList()
+    .map { list -> list.collectEntries() }
+
+// 2. Project ONT donor aggregate onto every SR id using the Map
 sr_ids_by_donor
-    .combine(ont_donor_agg, by: 0) 
-    .map { donor, id, tissue, lr_crams, lr_crais, lr_tissues ->
-        tuple(id, lr_crams, lr_crais, lr_tissues)
+    .combine(ont_donor_map) // Appends the Map to every element in sr_ids_by_donor
+    .map { donor, id, tissue, ont_map ->
+
+        // Look up the donor in our dictionary
+        def ont_data = ont_map[donor]
+
+        // If the donor exists, grab the data; otherwise, default to empty arrays
+        def ont_crams   = ont_data ? ont_data[0] : []
+        def ont_crais   = ont_data ? ont_data[1] : []
+        def ont_tissues = ont_data ? ont_data[2] : []
+
+        tuple(id, ont_crams, ont_crais, ont_tissues)
     }
     .set { ont_by_donor }
+
+
+//// Project LR donor aggregate onto every SR id for that donor
+//sr_ids_by_donor
+//    .combine(ont_donor_agg, by: 0) 
+//    .map { donor, id, tissue, lr_crams, lr_crais, lr_tissues ->
+//        tuple(id, lr_crams, lr_crais, lr_tissues)
+//    }
+//    .set { ont_by_donor }
 
 // ---------- merge all by sample ID ----------
 def input_bams = input_sr

@@ -295,6 +295,7 @@ workflow {
     merged_calls = preprocess_merge_callers(
         input_vcfs.combine(truth_ch, by: 0),
         params.ref,
+        params.ref_index,
         regions_input
     )
 

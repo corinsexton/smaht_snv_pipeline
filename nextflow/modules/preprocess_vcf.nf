@@ -11,7 +11,7 @@ process preprocess_vcf {
     mode:'copy'
 
     input:
-    tuple val(id), val(caller), path(vcf), path(tbi), path(ref), path(truth_vcf), path(truth_tbi)
+    tuple val(id), val(caller), path(vcf), path(tbi), path(ref), path(ref_index), path(truth_vcf), path(truth_tbi)
     tuple path(easy_regions), path(diff_regions), path(ext_regions),
         path(easy_regions_tbi), path(diff_regions_tbi), path(ext_regions_tbi)
 
@@ -23,29 +23,9 @@ process preprocess_vcf {
 
     script:
     """
-    bcftools view --header-only ${vcf} > header.txt
 
-    # TODO!! HERE ADD IN REMOVAL OF SVs for LONGCALLD
-    if grep -q -m1 'FEX' header.txt; then
-        # this is only for RUFUS files (FEX=PASS)
-	    bcftools norm --check-ref x -m- -f ${ref} ${vcf} -Ou \
-          | bcftools view -v snps,indels -i 'FILTER=="PASS" || INFO/FEX == "PASS"' -Oz -o ${id}.norm.PASS.vcf.gz -Wtbi
-	    bcftools norm -a -Oz -o ${id}.norm.PASS.atom.vcf.gz ${id}.norm.PASS.vcf.gz -Wtbi
-    elif grep -q -m1 'MEI' header.txt; then
-        # for longcallD
-	    bcftools view -v snps,indels -Ou ${vcf} | bcftools norm --check-ref x -m- -f ${ref} - -Ou \
-          | bcftools view -i 'FILTER=="PASS"' -Oz -o ${id}.norm.PASS.vcf.gz -Wtbi
-	    bcftools norm -a -Oz -o ${id}.norm.PASS.atom.vcf.gz ${id}.norm.PASS.vcf.gz -Wtbi
-    else
-	    bcftools norm --check-ref x -m- -f ${ref} ${vcf} -Ou \
-          | bcftools view -i 'FILTER=="PASS"' -Oz -o ${id}.norm.PASS.vcf.gz -Wtbi
-	    bcftools norm -a -Oz -o ${id}.norm.PASS.atom.vcf.gz ${id}.norm.PASS.vcf.gz -Wtbi
-    fi
-	
-
-    py_dedup_atomized.py ${id}.norm.PASS.vcf.gz ${id}.norm.PASS.atom.vcf.gz ${id}.${caller}.norm.PASS.atom.dedup.vcf.gz
-
-
+    bcftools_PASS_norm_dedup.sh -i ${vcf} -r ${ref} -o ${id}.${caller}.norm.PASS.atom.dedup
+    
     # --- metrics (standard schema) ---
     BEFORE_VCF=${vcf}
     AFTER_VCF=${id}.${caller}.norm.PASS.atom.dedup.vcf.gz

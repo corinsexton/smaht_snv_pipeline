@@ -18,6 +18,7 @@ workflow preprocess_merge_callers {
     take:
         vcf_inputs
         ref
+        ref_index
         regions_input
 
     main: 
@@ -25,7 +26,7 @@ workflow preprocess_merge_callers {
         // Assumes: preprocess_vcf emits (id, processed_vcf, processed_vcf.tbi)
         preprocess_input = vcf_inputs
             .map { id, caller, vcf, tbi, truth, truth_tbi ->
-                tuple(id, caller, vcf, tbi, ref, truth, truth_tbi)
+                tuple(id, caller, vcf, tbi, ref, ref_index, truth, truth_tbi)
             }
         preprocess_vcf(preprocess_input,regions_input)
 

@@ -272,7 +272,7 @@ def main(args):
 
         if caller == "TNhaplotyper2":
             handler = TNhaplotyper2Vcf(vcf_path)
-        elif caller == "Strelka2":
+        elif "Strelka2" in caller: # edited to include Strelka_indel
             handler = Strelka2Vcf(vcf_path)
         elif caller == "longcallD":
             handler = longcallDVcf(vcf_path)

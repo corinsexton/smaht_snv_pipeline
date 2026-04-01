@@ -488,10 +488,21 @@ class TieredVCF:
         for SR (Short-reads), PB (PacBio) and read cutoffs.
         Filter is based on Fisher's exact test for strand bias and binomial test for germline deviation.
         Add tier information to FILTER.
+        Variants absent from the pileup (no counts or alt allele unmatched) are included
+        with all counts set to zero.
         """
+        self.no_pileup_counts = 0
         for key, _ in self.snvs.items():
             if key not in self.minipileup_vcf.aggregate_counts:
-                continue  # No counts available, skip
+                # Variant absent from pileup or alt allele unmatched — assign zero counts
+                self.no_pileup_counts += 1
+                self.minipileup_vcf.aggregate_counts[key] = dict(
+                    SR=SampleCounts("SR"),
+                    PB=SampleCounts("PB"),
+                    ONT=SampleCounts("ONT"),
+                )
+                self.minipileup_vcf.tissue_pb_counts[key] = SampleCounts("PB_TISSUE")
+                self.minipileup_vcf.tissue_ont_counts[key] = SampleCounts("ONT_TISSUE")
             self.tier_variant(key)
             self.fisher_strand_bias(key)
             self.binomial_germline_deviation(key)
@@ -506,7 +517,7 @@ class TieredVCF:
     def write_tiered_vcf(self, out_vcf_path: str, keep_info: bool=False):
         """Write tiered VCF to out_vcf_path.
         """
-        no_pileup_counts, fail_filters = 0, 0
+        no_pileup_counts, fail_filters = self.no_pileup_counts, 0
         written, t1, t2 = 0, 0, 0
         with pysam.VariantFile(self.original_vcf.vcf_path) as vf_in:
 
@@ -517,10 +528,6 @@ class TieredVCF:
 
             with pysam.VariantFile(out_vcf_path, "w", header=header) as vf_out:
                 for key in sorted(self.snvs, key=lambda k: (self.chrom_order(k[0]), k[1])):
-                    if key not in self.minipileup_vcf.aggregate_counts:
-                        no_pileup_counts += 1
-                        print(key)
-                        continue  # No counts available, skip
                     record = self.snvs[key]
 
                     # Extract CALLERS (if present) then remove all INFO fields from original vcf
@@ -633,10 +640,11 @@ class TieredVCF:
                     if glm_pvals:
                         record.info["GERMLINE_PVAL"] = min(glm_pvals)
 
-                    if tier == 'TIER1':
+                    if tier == 'TIER1' and self.pb_cutoffs is not None:
                         record.info["PB_READ_CUTOFF"] = self.pb_cutoffs
 
-                    record.info["SR_READ_CUTOFF"] = self.sr_cutoffs
+                    if self.sr_cutoffs is not None:
+                        record.info["SR_READ_CUTOFF"] = self.sr_cutoffs
                     record.info["ALT_SUPPORT"] = self.alt_support_pass
                     # Write record
                     vf_out.write(record)
@@ -646,7 +654,7 @@ class TieredVCF:
         # Report
         print(f"INFO: Wrote tiered VCF to {out_vcf_path}.")
         print(f"REPORT: wrote {written} records (TIER1={t1}, TIER2={t2}).")
-        print(f"REPORT: {no_pileup_counts} variants with no pileup counts.")
+        print(f"REPORT: {no_pileup_counts} variants with no pileup counts (written with zero counts).")
         print(f"REPORT: {fail_filters} variants failing filters.")
 
 if __name__ == "__main__":

@@ -75,7 +75,10 @@ process run_minipileup_sr_only {
 
     set_filter_vcf.py \
         -i ${id}.CrossTissue.vcf.gz \
-        -o ${id}.final.vcf.gz
+        -o ${id}.final.vcf.gz \
+        --easy_regions $easy_regions \
+        --diff_regions $diff_regions \
+        --ext_regions $ext_regions
 
     tabix ${id}.final.vcf.gz
 

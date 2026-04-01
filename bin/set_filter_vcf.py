@@ -42,7 +42,8 @@ def clone_record(rec, out_header):
         "GERMLINE_PVAL_PB",
         "GERMLINE_PVAL_ONT",
         "GERMLINE_BINOM",
-        "PB_PHASING"
+        "PB_PHASING",
+        "REGION"
     ]
 
     info = dict(rec.info)
@@ -82,8 +83,8 @@ def fix_header(header):
             '##INFO=<ID=CALLERS,Number=.,Type=String,Description="List of variant callers that reported this variant">',
 
             '##INFO=<ID=ORIGINAL_FILTER,Number=1,Type=String,Description="Original filter values">',
-            '##INFO=<ID=CLUSTER,Number=1,Type=String,Description="Proximity clustering within window bp (PASS=not clustered, FAIL=clustered)>"',
-            '##INFO=<ID=CLUSTER_N,Number=1,Type=String,Description="If CLUSTER=FAIL, number of variants in the proximity cluster"',
+            '##INFO=<ID=CLUSTER,Number=1,Type=String,Description="Proximity clustering within window bp (PASS=not clustered, FAIL=clustered)">',
+            '##INFO=<ID=CLUSTER_N,Number=1,Type=Integer,Description="If CLUSTER=FAIL, number of variants in the proximity cluster">',
 
             '##INFO=<ID=PB_READ_CUTOFF,Number=1,Type=Float,Description="Number of PacBio reads with ALT support required to pass">',
             '##INFO=<ID=SR_READ_CUTOFF,Number=1,Type=Float,Description="Number of Illumina reads with ALT support required to pass">',
@@ -114,6 +115,7 @@ def fix_header(header):
             '##INFO=<ID=GERMLINE_BINOM,Number=1,Type=String,Description="PASS/FAIL germline binomial test">',
 
             '##INFO=<ID=PB_PHASING,Number=1,Type=String,Description="Phasing classification from pooled PacBio nearest germline SNV haplotyping">',
+            '##INFO=<ID=REGION,Number=1,Type=String,Description="SMaHT region classification: extreme, difficult, or easy">',
 
             '##FILTER=<ID=HighConf,Description="High confidence variant (CrossTech or CrossCaller+CrossTissue)">',
             '##FILTER=<ID=LowConf,Description="Low confidence variant (CrossCaller or CrossTissue only)">',
@@ -153,6 +155,9 @@ def main():
         "-o", "--output", default=None,
         help="Output VCF (.vcf or .vcf.gz). Default: <input>.confidence.vcf.gz"
     )
+    parser.add_argument("--easy_regions", default=None, help="BED.gz for easy regions (tabix-indexed)")
+    parser.add_argument("--diff_regions", default=None, help="BED.gz for difficult regions (tabix-indexed)")
+    parser.add_argument("--ext_regions",  default=None, help="BED.gz for extreme regions (tabix-indexed)")
     args = parser.parse_args()
 
     in_path = args.input
@@ -176,6 +181,11 @@ def main():
 
     new_header = fix_header(header)
 
+    # Open region tabix files if provided
+    ext_tbx  = pysam.TabixFile(args.ext_regions)  if args.ext_regions  else None
+    diff_tbx = pysam.TabixFile(args.diff_regions) if args.diff_regions else None
+    easy_tbx = pysam.TabixFile(args.easy_regions) if args.easy_regions else None
+
     ###########################################################################
     # Create output VCF with updated header
     ###########################################################################
@@ -191,8 +201,22 @@ def main():
         crossCaller = "CrossCaller" in rec.info
         crossTissue = "CrossTissue" in rec.info
 
+        # assign REGION (extreme > difficult > easy)
+        region = None
+        if ext_tbx:
+            if any(True for _ in ext_tbx.fetch(rec.chrom, rec.pos, rec.pos + 1)):
+                region = "extreme"
+        if region is None and diff_tbx:
+            if any(True for _ in diff_tbx.fetch(rec.chrom, rec.pos, rec.pos + 1)):
+                region = "difficult"
+        if region is None and easy_tbx:
+            if any(True for _ in easy_tbx.fetch(rec.chrom, rec.pos, rec.pos + 1)):
+                region = "easy"
+
         # clone record so filters can be added freely
         new = clone_record(rec, vcf_out.header)
+        if region is not None:
+            new.info["REGION"] = region
 
         # Decision tree:
         # If CrossTech OR (CrossCaller AND CrossTissue) → HighConf

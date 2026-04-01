@@ -13,6 +13,7 @@ workflow split_tier1_tier2 {
         bam_inputs
         ref_input
         regions_input
+        genome_chunks
 
     main: 
 
@@ -30,7 +31,7 @@ workflow split_tier1_tier2 {
         .map { id, vcf, tbi, truth_vcf, truth_vcf_tbi -> 
                tuple(id, vcf, tbi) } 
     
-    ch_split_vcf_out = split_vcf(ch_vcf_for_split)
+    ch_split_vcf_out = split_vcf(ch_vcf_for_split, genome_chunks)
 
 
     ch_split_vcf_out
@@ -54,7 +55,7 @@ workflow split_tier1_tier2 {
     
     // Step 4: Group all chunk outputs per id 
     run_minipileup_parallel.out.vcf 
-        .groupTuple(size:24) 
+        .groupTuple(size:156)
         .map { id, chunk_vcfs, chunk_tbis, truth_vcfs, truth_tbis, mp_vcfs, mp_tbis -> 
                 tuple( id, mp_vcfs, mp_tbis, truth_vcfs.unique(), truth_tbis.unique() ) } 
         .set { chunk_groups } 

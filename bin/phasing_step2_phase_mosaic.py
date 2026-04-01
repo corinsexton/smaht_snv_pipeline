@@ -6,6 +6,8 @@ from collections import Counter
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from functools import partial
 from multiprocessing import cpu_count, set_start_method
+import statistics
+from scipy.stats import binomtest
 
 # ---------------------------------------------------------------
 # Parallel Step (Sex-aware haplotype classification + phasing tag output)
@@ -139,7 +141,7 @@ def write_phasing_tags(results, out_prefix):
             phase = r.get("hap_classification", "").upper()
             if phase == "MOSAIC":
                 tag = "MOSAIC_PHASED"
-            elif phase in ["GERMLINE", "ARTIFACT"]:
+            elif phase in ["GERMLINE", "ARTIFACT", "GERMLINE_SEGDUP"]:
                 tag = phase
             elif phase == "HAPLOID":
                 # If you want haploid calls to be taggable, choose one; default to UNABLE_TO_PHASE
@@ -212,7 +214,65 @@ def main():
             except Exception as e:
                 # Include the row index to debug data-specific failures
                 raise RuntimeError(f"Worker failed on row index {idx}: {e}") from e
+
             results_buffer[idx] = out_row
+
+    # -----------------------------------------------------------
+    # Estimate typical coverage from observed total_reads across all variants
+    # (Note: total_reads here reflects reads spanning BOTH Var_pos and Germ_pos.)
+    # Use median as robust estimator; also compute mean for reporting.
+    # -----------------------------------------------------------
+    depths = [r.get("total_reads", 0) for r in results_buffer if int(r.get("total_reads", 0)) > 0]
+    if depths:
+        est_median_cov = int(statistics.median(depths))
+        est_mean_cov = int(round(statistics.mean(depths)))
+    else:
+        est_median_cov = 0
+        est_mean_cov = 0
+
+    # -----------------------------------------------------------
+    # Second pass: assign germline_SegDup using binomial test
+    # Keep everything else the same; only optionally override ARTIFACT -> GERMLINE_SEGDUP
+    #
+    # Null:
+    #   expected haploid depth ~ est_cov/2
+    #   expected fraction p = (est_cov/2) / total_reads
+    # Using ALT reads at Var_pos among spanning reads:
+    #   alt_reads = case_both + case_var_only
+    #
+    # Rule:
+    #   if binom pvalue >= 0.01 and current classification is artifact -> germline_SegDup
+    # -----------------------------------------------------------
+    expected_hap_depth = est_median_cov / 2.0 if est_median_cov > 0 else 0.0
+
+    for r in results_buffer:
+        # attach the estimate for traceability
+        r["estimated_median_cov"] = est_median_cov
+        r["estimated_mean_cov"] = est_mean_cov
+
+        n = int(r.get("total_reads", 0))
+        if n <= 0 or expected_hap_depth <= 0:
+            r["Binom_relativeLR"] = ""
+            continue
+
+        p = expected_hap_depth / float(n)
+        # Guard: binomial p must be in [0,1]
+        if p <= 0.0 or p > 1.0:
+            r["Binom_relativeLR"] = ""
+            continue
+
+        alt_reads = int(r.get("case_both", 0)) + int(r.get("case_var_only", 0))
+
+        # If there are no ALT reads, the test is still defined; you can keep it.
+        # If you'd prefer to skip, add: if alt_reads == 0: continue
+        pv = binomtest(alt_reads, n, p).pvalue
+        r["Binom_relativeLR"] = pv
+
+        if pv >= 1e-5:
+            r["hap_classification"] = "germline_SegDup"
+
+        print(f"[Info] Estimated coverage from total_reads: median={est_median_cov}, mean={est_mean_cov} "
+              f"(computed over {len(depths)} variants with total_reads>0)")
 
     # Write main classification table (deterministic order)
     out_tsv = f"{args.id}.haplotyped.tsv"

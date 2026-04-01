@@ -9,7 +9,7 @@ nextflow.enable.dsl=2
 process runVEP {
   cpus 1
   memory '4G'
-  time '2h'
+  time '8h'
   /*
   Run VEP on VCF files
 

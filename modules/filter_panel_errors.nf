@@ -1,7 +1,7 @@
 process filter_poe {
 
     publishDir "${params.results_dir}/6_poe_filtered",
-    pattern: "${id}.pon.filtered.vcf.gz*",
+    pattern: "${id}.pon.f*.vcf.gz*",
     mode:'copy'
 
     publishDir "${params.results_dir}/6_poe_filtered",
@@ -29,17 +29,23 @@ process filter_poe {
           path(truth_vcf), path(truth_tbi), emit: vcf
     path("${id}.filter_poe.metrics.tsv"), emit: metrics
     path("${id}.filter_poe.regions.tsv"), emit: regions
+    path("${id}.pon.failed.vcf.gz")
+    path("${id}.pon.failed.vcf.gz.tbi")
 
     script:
     """
     filter_by_poe.py --vcf ${vcf} \
                        --fasta ${error_panel_fa} \
-                       --out ${id}.pon.filtered.vcf 
+                       --out ${id}.pon.filtered.vcf \
+                       --failed-out ${id}.pon.failed.vcf
     # optional params
     #--threads 2 --failed-out failed.vcf
 
     bcftools view -v snps -Oz ${id}.pon.filtered.vcf > ${id}.pon.filtered.vcf.gz
     tabix ${id}.pon.filtered.vcf.gz
+
+    bcftools view -v snps -Oz ${id}.pon.failed.vcf > ${id}.pon.failed.vcf.gz
+    tabix ${id}.pon.failed.vcf.gz
 
      # --- metrics (standard schema) ---
     BEFORE_VCF=${vcf}

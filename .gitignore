@@ -1,0 +1,20 @@
+# Nextflow run artifacts
+.nextflow.log
+.nextflow/
+work/
+
+# Results
+results*/
+
+# Samplesheets and data CSVs
+Production_*.csv
+p25_*.csv
+p25_ss/
+p25_samplesheets_merged/
+
+# SLURM output logs
+slurm-*.out
+
+# Miscellaneous
+z
+zz

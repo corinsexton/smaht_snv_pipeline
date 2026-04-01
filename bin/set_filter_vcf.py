@@ -16,6 +16,12 @@ def clone_record(rec, out_header):
         "CrossCaller",
         "CrossTissue",
         "CALLERS",
+        "ORIGINAL_FILTER",
+        "CLUSTER",
+        "CLUSTER_N",
+        "PB_READ_CUTOFF",
+        "SR_READ_CUTOFF",
+        "ALT_SUPPORT",
         "SR_VAF",
         "TISSUE_PB_VAF",
         "TISSUE_ONT_VAF",
@@ -30,10 +36,12 @@ def clone_record(rec, out_header):
         "ONT_ADR",
         "SB_SRC",
         "SB_PVAL",
+        "FISHER",
         "GERMLINE_PVAL",
         "GERMLINE_PVAL_SR",
         "GERMLINE_PVAL_PB",
         "GERMLINE_PVAL_ONT",
+        "GERMLINE_BINOM",
         "PB_PHASING"
     ]
 
@@ -73,6 +81,15 @@ def fix_header(header):
             '##INFO=<ID=CrossTissue,Number=0,Type=Flag,Description="Alt has VAF > 0 in another short read tissue">',
             '##INFO=<ID=CALLERS,Number=.,Type=String,Description="List of variant callers that reported this variant">',
 
+            '##INFO=<ID=ORIGINAL_FILTER,Number=1,Type=String,Description="Original filter values">',
+            '##INFO=<ID=CLUSTER,Number=1,Type=String,Description="Proximity clustering within window bp (PASS=not clustered, FAIL=clustered)>"',
+            '##INFO=<ID=CLUSTER_N,Number=1,Type=String,Description="If CLUSTER=FAIL, number of variants in the proximity cluster"',
+
+            '##INFO=<ID=PB_READ_CUTOFF,Number=1,Type=Float,Description="Number of PacBio reads with ALT support required to pass">',
+            '##INFO=<ID=SR_READ_CUTOFF,Number=1,Type=Float,Description="Number of Illumina reads with ALT support required to pass">',
+            '##INFO=<ID=ALT_SUPPORT,Number=1,Type=String,Description="PASS/FAIL based on alt read support">',
+
+
             '##INFO=<ID=SR_VAF,Number=1,Type=Float,Description="VAF for short read in current tissue">',
             '##INFO=<ID=TISSUE_PB_VAF,Number=1,Type=Float,Description="VAF for PacBio in current tissue (if available)">',
             '##INFO=<ID=TISSUE_ONT_VAF,Number=1,Type=Float,Description="VAF for ONT in current tissue (if available)">',
@@ -89,16 +106,19 @@ def fix_header(header):
 
             '##INFO=<ID=SB_SRC,Number=1,Type=String,Description="Counts source used for Fisher strand test: PB, ONT, or SR">',
             '##INFO=<ID=SB_PVAL,Number=1,Type=Float,Description="Fisher p-value for strand balance on chosen sample">',
+            '##INFO=<ID=FISHER,Number=1,Type=String,Description="PASS/FAIL Fisher test">',
             '##INFO=<ID=GERMLINE_PVAL,Number=1,Type=Float,Description="Minimum binomial p-value for germline deviation across all platforms tested">',
             '##INFO=<ID=GERMLINE_PVAL_SR,Number=1,Type=Float,Description="Binomial p-value for germline deviation in tissue short read data">',
             '##INFO=<ID=GERMLINE_PVAL_PB,Number=1,Type=Float,Description="Binomial p-value for germline deviation in pooled PacBio data">',
             '##INFO=<ID=GERMLINE_PVAL_ONT,Number=1,Type=Float,Description="Binomial p-value for germline deviation in pooled ONT data">',
+            '##INFO=<ID=GERMLINE_BINOM,Number=1,Type=String,Description="PASS/FAIL germline binomial test">',
 
             '##INFO=<ID=PB_PHASING,Number=1,Type=String,Description="Phasing classification from pooled PacBio nearest germline SNV haplotyping">',
 
             '##FILTER=<ID=HighConf,Description="High confidence variant (CrossTech or CrossCaller+CrossTissue)">',
             '##FILTER=<ID=LowConf,Description="Low confidence variant (CrossCaller or CrossTissue only)">',
-            '##FILTER=<ID=LikelyArtifact,Description="Variants passing all filters but with no CrossTech, CrossCaller, or CrossTissue evidence, lowest confidence variants">'
+            '##FILTER=<ID=LikelyArtifact,Description="Variants passing all filters but with no CrossTech, CrossCaller, or CrossTissue evidence, lowest confidence variants">',
+            '##FILTER=<ID=FAIL,Description="Variants failing one or more filters">'
     ]
 
     header_list = str(header).split('\n')
@@ -123,7 +143,7 @@ def fix_header(header):
 ###############################################################################
 def main():
     parser = argparse.ArgumentParser(
-        description="Assign HighConf / LowConf / . FILTERs to variants"
+        description="Assign HighConf / LowConf / LikelyArtifact / FAIL FILTERs to variants"
     )
     parser.add_argument(
         "-i", "--input", required=True,
@@ -181,12 +201,16 @@ def main():
 
         new.filter.clear()
 
-        if crossTech or (crossCaller and crossTissue):
-            new.filter.add("HighConf")
-        elif crossCaller or crossTissue:
-            new.filter.add("LowConf")
+        info_string = str(rec).split('\t')[7]
+        if 'FAIL' in info_string:
+            new.filter.add("FAIL")
         else:
-            new.filter.add("LikelyArtifact")
+            if crossTech or (crossCaller and crossTissue):
+                new.filter.add("HighConf")
+            elif crossCaller or crossTissue:
+                new.filter.add("LowConf")
+            else:
+                new.filter.add("LikelyArtifact")
 
         vcf_out.write(new)
 

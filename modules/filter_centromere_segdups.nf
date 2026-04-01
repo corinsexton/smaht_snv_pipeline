@@ -1,7 +1,7 @@
 process filter_centromere_segdups {
 
     publishDir "${params.results_dir}/5_centromere_segdups_filtered",
-    pattern: "${id}.filtered.vcf.gz*",
+    pattern: "${id}.*.vcf.gz*",
     mode:'copy'
 
 
@@ -12,7 +12,7 @@ process filter_centromere_segdups {
 
     cpus 1
     memory '4G'
-    time '60m'
+    time '4h'
 
     tag "$id"
 
@@ -32,6 +32,8 @@ process filter_centromere_segdups {
           path(truth_vcf), path(truth_tbi), emit: vcf
         path("${id}.filter_centromere_segdups.metrics.tsv"), emit: metrics
         path("${id}.filter_centromere_segdups.regions.tsv"), emit: regions 
+        path("${id}.failed.vcf.gz")
+        path("${id}.failed.vcf.gz.tbi")
 
     script:
     """
@@ -40,7 +42,7 @@ process filter_centromere_segdups {
                                  --centromere ${centromere_regions} \
                                  --simple-repeat ${simple_repeat_regions} \
                                  --kg-indels ${kg_indels} --kg-slop 5 \
-                                 ${vcf} ${id}.filtered.vcf.gz 
+                                 ${vcf} ${id}.filtered.vcf.gz  ${id}.failed.vcf.gz
 
     # --- metrics (standard schema) ---
     BEFORE_VCF=${vcf}

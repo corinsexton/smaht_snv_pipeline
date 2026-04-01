@@ -58,23 +58,38 @@ TMP_HEAD="$(mktemp ./HEAD_XXXXXX)"
 bcftools view --header-only "$INPUT_VCF" > "$TMP_HEAD"
 trap 'rm -f "$TMP_HEAD"' EXIT
 
-# Set filter based on header
+
+
+# Set filter based on header ALL VARs
 if grep -q -m1 'ID=FEX' "$TMP_HEAD"; then
-    FILTER='FILTER=="PASS" || INFO/FEX=="PASS"'
+	echo "Processing VCF..."
+	bcftools view --threads "$NTHREADS" -Ov "$INPUT_VCF" \
+	    | awk 'BEGIN{FS=OFS="\t"} /^#/ {print; next} {if($8 ~ /(^|;)FEX=PASS(;|$)/) $7="PASS"; print}' \
+	    | bcftools view --threads "$NTHREADS" -Ou - \
+	    | bcftools view -v snps,indels --threads "$NTHREADS" -Ou - \
+	    | bcftools norm --threads "$NTHREADS" --check-ref x -m -any --atomize -f "$REFERENCE_FASTA" -Ou - \
+	    | bcftools norm --threads "$NTHREADS" -d exact -Ou - \
+	    | bcftools sort -T "tmp_bcftools.XXXXXX" -Oz -o "${OUTPUT_PRFX}.vcf.gz" \
+	    || { echo "Error: bcftools normalization failed"; exit 1; }
+
 elif grep -q -m1 'longcallD' "$TMP_HEAD"; then
     # Keep PASS records that are NOT SVs (i.e., SVTYPE tag absent from INFO)
-    FILTER='FILTER=="PASS" && INFO/SVTYPE="."'
-else
-    FILTER='FILTER=="PASS"'
-fi
+    FILTER='INFO/SVTYPE="."'
+	echo "Processing VCF..."
+	bcftools view -v snps,indels --threads "$NTHREADS" -i "$FILTER" -Ou "$INPUT_VCF" \
+	    | bcftools norm --threads "$NTHREADS" --check-ref x -m -any --atomize -f "$REFERENCE_FASTA" -Ou - \
+	    | bcftools norm --threads "$NTHREADS" -d exact -Ou - \
+	    | bcftools sort -T "tmp_bcftools.XXXXXX" -Oz -o "${OUTPUT_PRFX}.vcf.gz" \
+	    || { echo "Error: bcftools normalization failed"; exit 1; }
 
-# Process VCF
-echo "Processing VCF..."
-bcftools view -v snps,indels --threads "$NTHREADS" -i "$FILTER" -Ou "$INPUT_VCF" \
-    | bcftools norm --threads "$NTHREADS" --check-ref x -m -any --atomize -f "$REFERENCE_FASTA" -Ou - \
-    | bcftools norm --threads "$NTHREADS" -d exact -Ou - \
-    | bcftools sort -T "tmp_bcftools.XXXXXX" -Oz -o "${OUTPUT_PRFX}.vcf.gz" \
-    || { echo "Error: bcftools normalization failed"; exit 1; }
+else
+	echo "Processing VCF..."
+	bcftools view -v snps,indels --threads "$NTHREADS" -Ou "$INPUT_VCF" \
+	    | bcftools norm --threads "$NTHREADS" --check-ref x -m -any --atomize -f "$REFERENCE_FASTA" -Ou - \
+	    | bcftools norm --threads "$NTHREADS" -d exact -Ou - \
+	    | bcftools sort -T "tmp_bcftools.XXXXXX" -Oz -o "${OUTPUT_PRFX}.vcf.gz" \
+	    || { echo "Error: bcftools normalization failed"; exit 1; }
+fi
 
 bcftools index --threads "$NTHREADS" --tbi "${OUTPUT_PRFX}.vcf.gz" || { echo "Error: bcftools index failed"; exit 1; }
 

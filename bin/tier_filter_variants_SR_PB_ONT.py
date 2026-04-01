@@ -340,6 +340,9 @@ class TieredVCF:
         self.snvs = original_vcf.snvs  # (chrom, pos, ref, alt) -> pysam.VariantRecord
         self.tiers = dict()  # (chrom, pos, ref, alt) -> tier
         self.tests = dict()  # (chrom, pos, ref, alt) -> {fisher: FisherTestResult, binomial: BinomialTestResult}
+        self.sr_cutoffs = None
+        self.pb_cutoffs = None
+        self.alt_support_pass = None
         # Only store TIER1 and TIER2 variants, others are not in dict
         self.definitions = [
             # CrossTech classification
@@ -347,14 +350,20 @@ class TieredVCF:
             '##INFO=<ID=CrossCaller,Number=0,Type=Flag,Description="Alt found in more than one variant caller">',
             # CALLERS
             '##INFO=<ID=CALLERS,Number=.,Type=String,Description="List of variant callers that reported this variant">',
+
+            '##INFO=<ID=ORIGINAL_FILTER,Number=1,Type=String,Description="Original filter values">',
+            '##INFO=<ID=CLUSTER,Number=1,Type=String,Description="Proximity clustering within window bp (PASS=not clustered, FAIL=clustered)">',
+            '##INFO=<ID=CLUSTER_N,Number=1,Type=String,Description="If CLUSTER=FAIL, number of variants in the proximity cluster">',
             # Fisher strand bias
             '##INFO=<ID=SB_PVAL,Number=1,Type=Float,Description="Fisher exact test p-value for strand balance on the selected platform">',
             '##INFO=<ID=SB_SRC,Number=1,Type=String,Description="Platform used for Fisher strand test: SR (short read) or PB (PacBio long-read)">',
+            '##INFO=<ID=FISHER,Number=1,Type=String,Description="PASS/FAIL Fisher test">',
             # Binomial germline deviation
             '##INFO=<ID=GERMLINE_PVAL,Number=1,Type=Float,Description="Minimum binomial p-value for germline deviation across all platforms tested">',
             '##INFO=<ID=GERMLINE_PVAL_SR,Number=1,Type=Float,Description="Binomial p-value for germline deviation in short read data">',
             '##INFO=<ID=GERMLINE_PVAL_PB,Number=1,Type=Float,Description="Binomial p-value for germline deviation in PacBio (long-read) data">',
             '##INFO=<ID=GERMLINE_PVAL_ONT,Number=1,Type=Float,Description="Binomial p-value for germline deviation in Oxford Nanopore (long-read) data">',
+            '##INFO=<ID=GERMLINE_BINOM,Number=1,Type=String,Description="PASS/FAIL germline binomial test">',
             # Raw strand-specific counts
             '##INFO=<ID=SR_ADF,Number=2,Type=Integer,Description="Short-read forward depths (REF, ALT)">',
             '##INFO=<ID=SR_ADR,Number=2,Type=Integer,Description="Short-read reverse depths (REF, ALT)">',
@@ -363,7 +372,11 @@ class TieredVCF:
             '##INFO=<ID=ONT_ADF,Number=2,Type=Integer,Description="Oxford Nanopore (long-read) forward depths (REF, ALT)">',
             '##INFO=<ID=ONT_ADR,Number=2,Type=Integer,Description="Oxford Nanopore (long-read) reverse depths (REF, ALT)">',
             '##INFO=<ID=TISSUE_PB_VAF,Number=1,Type=Float,Description="PacBio VAF computed using only tissue-matched PB sample(s)">',
-            '##INFO=<ID=TISSUE_ONT_VAF,Number=1,Type=Float,Description="ONT VAF computed using only tissue-matched ONT sample(s)">'
+            '##INFO=<ID=TISSUE_ONT_VAF,Number=1,Type=Float,Description="ONT VAF computed using only tissue-matched ONT sample(s)">',
+            '##INFO=<ID=PB_READ_CUTOFF,Number=1,Type=Float,Description="Number of PacBio reads with ALT support required to pass">',
+            '##INFO=<ID=SR_READ_CUTOFF,Number=1,Type=Float,Description="Number of Illumina reads with ALT support required to pass">',
+            '##INFO=<ID=ALT_SUPPORT,Number=1,Type=String,Description="PASS/FAIL based on alt read support">'
+
         ]
 
         self.filter_variants()
@@ -390,8 +403,17 @@ class TieredVCF:
             # Tier classification
             if SR_ALT_TOTAL >= thresholds["combined_SR"] and PB_ALT_TOTAL >= thresholds["combined_PB"]:
                 self.tiers[key] = "TIER1"
+                self.alt_support_pass = 'PASS_SR_PB'
+                self.sr_cutoffs = thresholds["combined_SR"]
+                self.pb_cutoffs = thresholds["combined_PB"]
             elif SR_ALT_TOTAL >= thresholds["SR"]:
                 self.tiers[key] = "TIER2"
+                self.alt_support_pass = 'PASS_SR'
+                self.sr_cutoffs = thresholds["combined_SR"]
+            else:
+                self.alt_support_pass = 'FAIL'
+        else:
+            self.alt_support_pass = 'FAIL_NO_SR'
 
     def fisher_strand_bias(self, key: tuple):
         """Compute Fisher's exact test p-value for strand bias.
@@ -497,11 +519,15 @@ class TieredVCF:
                 for key in sorted(self.snvs, key=lambda k: (self.chrom_order(k[0]), k[1])):
                     if key not in self.minipileup_vcf.aggregate_counts:
                         no_pileup_counts += 1
+                        print(key)
                         continue  # No counts available, skip
                     record = self.snvs[key]
 
                     # Extract CALLERS (if present) then remove all INFO fields from original vcf
                     callers_value = record.info.get("CALLERS")
+                    orig_filter_value = record.info.get("ORIGINAL_FILTER")
+                    cluster_value = record.info.get("CLUSTER")
+                    clustern_value = record.info.get("CLUSTER_N")
 
                     if keep_info == False:
                         # Clear all INFO fields
@@ -512,18 +538,21 @@ class TieredVCF:
                     # Reset to PASS, then add tier if present
                     record.filter.clear()
                     tier = self.tiers.get(key)
-                    if tier not in {"TIER1", "TIER2"}:
-                        continue
+                    #if tier not in {"TIER1", "TIER2"}:
+                    #   continue
                     # Consider fisher and binomial results
                     fisher_result = self.tests[key]["fisher"]
                     binom_result = self.tests[key]["binomial"]
                     fisher_pass = fisher_result.is_pass(self.strand_alpha)
+
+                    if fisher_pass is False:
+                        record.info["FISHER"] = 'FAIL'
+                    else: 
+                        record.info["FISHER"] = 'PASS'
+
+
                     # Binomial gating per tier
-                    if tier == "TIER2":
-                        # require SR only
-                        binom_pass = binom_result.is_pass("SR", self.germline_alpha_SR)
-                        binom_pass_long = True  # ignore PB/ONT for TIER2
-                    else:  # TIER1
+                    if tier == "TIER1":  # TIER1
                         # ignore SR here to match spec
                         binom_pass_pb = binom_result.is_pass("PB", self.germline_alpha)
                         binom_pass_ont = binom_result.is_pass("ONT", self.germline_alpha)
@@ -531,12 +560,20 @@ class TieredVCF:
                         binom_pass, binom_pass_long = True, True
                         if binom_pass_pb is False or binom_pass_ont is False:
                             binom_pass_long = False
+                    elif tier == "TIER2":
+                        # require SR only
+                        binom_pass = binom_result.is_pass("SR", self.germline_alpha_SR)
+                        binom_pass_long = True  # ignore PB/ONT for TIER2
+                    else:
+                        # require SR only
+                        binom_pass = binom_result.is_pass("SR", self.germline_alpha_SR)
+                        binom_pass_long = True  # ignore PB/ONT for TIER2
 
-                    if fisher_pass is False or binom_pass is False or binom_pass_long is False:
-                      fail_filters += 1
-                      continue  # Variant fails filters, do not write
-
-
+                    if binom_pass is False or binom_pass_long is False:
+                        record.info["GERMLINE_BINOM"] = 'FAIL'
+                    else: 
+                        record.info["GERMLINE_BINOM"] = 'PASS'
+                    
                     # Add flag for CrossTech (old Tier1 classification) and CrossCaller
                     if tier == 'TIER1':
                         record.info['CrossTech'] = True
@@ -545,6 +582,9 @@ class TieredVCF:
 
                     if keep_info == False:
                         record.info["CALLERS"] = callers_value
+                        record.info["ORIGINAL_FILTER"] = orig_filter_value
+                        record.info["CLUSTER"] = cluster_value
+                        record.info["CLUSTER_N"] = clustern_value
                     # Add raw counts to INFO fields
                     agg = self.minipileup_vcf.aggregate_counts[key]
                     record.info["SR_ADF"] = [agg["SR"].REF_ADF, agg["SR"].ALT_ADF]
@@ -592,6 +632,12 @@ class TieredVCF:
                             glm_pvals.append(binom_result.p_value_ONT)
                     if glm_pvals:
                         record.info["GERMLINE_PVAL"] = min(glm_pvals)
+
+                    if tier == 'TIER1':
+                        record.info["PB_READ_CUTOFF"] = self.pb_cutoffs
+
+                    record.info["SR_READ_CUTOFF"] = self.sr_cutoffs
+                    record.info["ALT_SUPPORT"] = self.alt_support_pass
                     # Write record
                     vf_out.write(record)
                     written += 1

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 
-#SBATCH --job-name=nf_PROD
+#SBATCH --job-name=nf_big_vcf
 #SBATCH -A park
 #SBATCH --partition park
 #SBATCH --mem 5G
@@ -12,9 +12,9 @@
 
 nextflow run main.nf -resume  \
   --vep_config vep.ini \
-  --longread_csv Production_lr.csv \
-  --ont_csv Production_ont.csv \
-  --shortread_csv Production_sr.csv \
-  --input_metadata Production_metadata.csv \
-  --input_vcfs Production_vcfs_ss.csv \
-  --results_dir ./results
+  --longread_csv p25_samplesheets_merged/p25_lr.csv \
+  --ont_csv p25_samplesheets_merged/p25_ont.csv \
+  --shortread_csv p25_samplesheets_merged/p25_sr.csv \
+  --input_metadata p25_samplesheets_merged/p25_metadata.csv \
+  --input_vcfs p25_vcfs_ss.csv \
+  --results_dir ./results_p25_ss

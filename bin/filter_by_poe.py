@@ -198,7 +198,8 @@ def main():
                 r = clone_record_to_header(r_in, outvcf)
                 r.info["BSMN_POE"] = tag
 
-                outvcf.write(r)
+                if ok2:
+                    outvcf.write(r)
 
                 if (not ok2) and (failvcf is not None):
                     # Need a record bound to failvcf header too (same header, but safest to clone from r_in again)

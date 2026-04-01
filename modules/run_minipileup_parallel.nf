@@ -2,9 +2,9 @@ process run_minipileup_parallel {
 
     cache 'lenient'
 
-    cpus 10
+    cpus 15
     memory '4G'
-    time '2h'
+    time '1h'
 
     tag "$id"
 
@@ -62,7 +62,7 @@ process run_minipileup_parallel {
     minipileup-parallel.sh -i ${vcf} \
         -r ${ref} \
         -t ${task.cpus} \
-        --group 50 \
+        --group 10 \
         -o ${id}.\${chr}.minipileup \
         \${sr_crams} \
         \${pb_crams} \

@@ -45,14 +45,15 @@ def filter_clustered(input_vcf: str, output_vcf: str, window: int = 50) -> None:
         n = len(g)
 
         for rec_in in g:
+            print(rec_in.filter)
             rec = vcf_out.new_record(
                 contig=rec_in.contig,
                 start=rec_in.start,
                 stop=rec_in.stop,
                 id=rec_in.id,
+                filter = None,
                 alleles=rec_in.alleles,
                 qual=rec_in.qual,
-                filter=list(rec_in.filter.keys()) if rec_in.filter is not None else None,
                 info=dict(rec_in.info),
             )
 

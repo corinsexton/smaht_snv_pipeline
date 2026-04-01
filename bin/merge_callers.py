@@ -28,6 +28,7 @@ VALID_CALLERS = [
 DEFINITIONS_TO_ADD = [
     '##FILTER=<ID=PASS,Description="Passed filters in at least one caller">',
     '##INFO=<ID=CALLERS,Number=.,Type=String,Description="List of variant callers that reported this variant">',
+    '##INFO=<ID=ORIGINAL_FILTER,Number=.,Type=String,Description="Original filter values">',
     ## RUFUS
     '##ALT=<ID=INS:ME:ALU,Description="Insertion of ALU element">',
     '##ALT=<ID=INS:ME:L1,Description="Insertion of L1 element">',
@@ -85,11 +86,14 @@ class VcfHandler:
                 empty_record = self._create_empty_record(record)
                 target_dict.setdefault(record_repr, {
                     'record': empty_record,
-                    'callers': set()
+                    'callers': set(),
+                    'filter': set()
                 })
 
             # Add caller information
             target_dict[record_repr]['callers'].add(self.caller_name)
+            clean_filter = record.FILTER.replace(';',',')
+            target_dict[record_repr]['filter'].add(clean_filter)
 
             # Add caller-specific INFO, if any
             shared_record = target_dict[record_repr]['record']
@@ -378,12 +382,16 @@ def main(args):
         for record_repr in sorted(merged_records.keys(), key=get_chrom_pos):
             entry = merged_records[record_repr]
             # Update FILTER field
-            if entry['record'].FILTER == ".":
-                entry['record'].FILTER = "PASS"
+            #if entry['record'].FILTER == ".":
+            #    entry['record'].FILTER = "PASS"
 
             # Update CALLERS INFO field
             callers_info = ','.join(sorted(entry['callers']))
             entry['record'].add_tag_info(f"CALLERS={callers_info}")
+
+            # Update ORIGINAL_FILTER INFO field
+            filter_info = ','.join(sorted(entry['filter']))
+            entry['record'].add_tag_info(f"ORIGINAL_FILTER={filter_info}")
 
             # Write record
             out_vcf.write(entry['record'].to_string())

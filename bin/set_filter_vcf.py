@@ -61,9 +61,13 @@ def clone_record(rec, out_header):
         id=rec.id,
         qual=rec.qual,
         alleles=rec.alleles,
-        info=ordered_info,
         filter=None               # we overwrite FILTER
     )
+
+    # Set INFO fields individually so pysam uses the correct Number/Type per field
+    # (passing info= to new_record fails for Number=2 fields like SR_ADF)
+    for k, v in ordered_info.items():
+        new_rec.info[k] = v
 
     # copy FORMAT/sample fields
     for sample in rec.samples:
@@ -82,7 +86,7 @@ def fix_header(header):
             '##INFO=<ID=CrossTissue,Number=0,Type=Flag,Description="Alt has VAF > 0 in another short read tissue">',
             '##INFO=<ID=CALLERS,Number=.,Type=String,Description="List of variant callers that reported this variant">',
 
-            '##INFO=<ID=ORIGINAL_FILTER,Number=1,Type=String,Description="Original filter values">',
+            '##INFO=<ID=ORIGINAL_FILTER,Number=.,Type=String,Description="Original filter values">',
             '##INFO=<ID=CLUSTER,Number=1,Type=String,Description="Proximity clustering within window bp (PASS=not clustered, FAIL=clustered)">',
             '##INFO=<ID=CLUSTER_N,Number=1,Type=Integer,Description="If CLUSTER=FAIL, number of variants in the proximity cluster">',
 

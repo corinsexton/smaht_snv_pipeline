@@ -254,12 +254,8 @@ def sex_ch = Channel
 
 workflow {
 
-    // Strip core/gcc columns — preprocess_merge_callers updated in later commit
-    vcfs_for_merge = input_vcfs
-        .map { tissue, core, gcc, caller, vcf, tbi -> tuple(tissue, caller, vcf, tbi) }
-
     merged_calls = preprocess_merge_callers(
-        vcfs_for_merge.combine(truth_ch, by: 0),
+        input_vcfs.combine(truth_ch, by: 0),
         params.ref,
         params.ref_index,
         regions_input

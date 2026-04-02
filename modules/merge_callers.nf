@@ -40,9 +40,13 @@ process merge_callers {
 
     script:
 
-    // Extract VCF paths from the list
+    // callers entries are encoded as CORE__CALLER (double underscore)
+    // Split to build -i CORE:CALLER:VCF for merge_callers.py
     def caller_vcf_pairs = (0..<callers.size()).collect { idx ->
-        "-i ${callers[idx]}:${vcfs[idx]}"
+        def parts = callers[idx].split("__", 2)
+        def core   = parts[0]
+        def caller = parts[1]
+        "-i ${core}:${caller}:${vcfs[idx]}"
     }.join(" ")
 
     def truth_vcf = truth_vcfs[0]

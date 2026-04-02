@@ -195,7 +195,54 @@ def cram_map_ont = params.ont_csv ? input_ont
         [“${tissue}.core_cram_map.tsv”, “${core}\t${basename}\tONT\n”]
     } : Channel.empty()
 
+// ---------- Auto-expand merged cores (e.g., 001C1-001A3) ----------
+// Merged cores are identified by a dash in the core name in the VCF samplesheet.
+// Their constituent individual core CRAMs are found automatically, so merged CRAM
+// files do not need to be listed in the CRAM samplesheets.
+//
+// For each merged core, we look up each constituent individual core in the CRAM
+// samplesheet (joining on [tissue, indiv_core]) and add the CRAM basename to the
+// core_cram_map under the merged core name.
+
+// Helper closure: parse VCF samplesheet and emit ([tissue, indiv_core], merged_core)
+// for every constituent of every merged core found.
+def mergedCoreExpansions = {
+    Channel
+        .fromPath(params.input_vcfs)
+        .splitCsv(header: true)
+        .map { row -> tuple(row.tissue.trim(), row.core.trim()) }
+        .filter { tissue, core -> core.contains('-') }
+        .unique()
+        .flatMap { tissue, merged_core ->
+            merged_core.tokenize('-').collect { indiv_core ->
+                tuple([tissue, indiv_core], merged_core)
+            }
+        }
+}
+
+def cram_map_sr_merged = mergedCoreExpansions()
+    .join(input_sr.map { tissue, core, cram, crai -> tuple([tissue, core], cram) })
+    .map { key, merged_core, cram ->
+        def basename = cram.name.replaceAll(/\.(cram|bam)$/, '')
+        [“${key[0]}.core_cram_map.tsv”, “${merged_core}\t${basename}\tSR\n”]
+    }
+
+def cram_map_lr_merged = params.longread_csv ? mergedCoreExpansions()
+    .join(input_lr.map { tissue, core, cram, crai -> tuple([tissue, core], cram) })
+    .map { key, merged_core, cram ->
+        def basename = cram.name.replaceAll(/\.(cram|bam)$/, '')
+        [“${key[0]}.core_cram_map.tsv”, “${merged_core}\t${basename}\tPB\n”]
+    } : Channel.empty()
+
+def cram_map_ont_merged = params.ont_csv ? mergedCoreExpansions()
+    .join(input_ont.map { tissue, core, cram, crai -> tuple([tissue, core], cram) })
+    .map { key, merged_core, cram ->
+        def basename = cram.name.replaceAll(/\.(cram|bam)$/, '')
+        [“${key[0]}.core_cram_map.tsv”, “${merged_core}\t${basename}\tONT\n”]
+    } : Channel.empty()
+
 cram_map_sr.mix(cram_map_lr).mix(cram_map_ont)
+    .mix(cram_map_sr_merged).mix(cram_map_lr_merged).mix(cram_map_ont_merged)
     .collectFile { item -> item }
     .map { f ->
         def tissue = f.name.replace('.core_cram_map.tsv', '')

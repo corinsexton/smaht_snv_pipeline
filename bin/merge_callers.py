@@ -28,6 +28,7 @@ VALID_CALLERS = [
 DEFINITIONS_TO_ADD = [
     '##FILTER=<ID=PASS,Description="Passed filters in at least one caller">',
     '##INFO=<ID=CALLERS,Number=.,Type=String,Description="List of variant callers that reported this variant">',
+    '##INFO=<ID=CORE_CALLS,Number=1,Type=String,Description="Per-core caller presence: core1:caller1,caller2|core2:caller1. Used by tier script to assign GT per sample column.">',
     ## RUFUS
     '##ALT=<ID=INS:ME:ALU,Description="Insertion of ALU element">',
     '##ALT=<ID=INS:ME:L1,Description="Insertion of L1 element">',
@@ -75,21 +76,28 @@ class VcfHandler:
         """
         pass
 
-    def update_dict(self, target_dict):
+    def update_dict(self, target_dict, core=None):
         """
         Update shared records in a target dictionary
         with records from this VCF handler.
+        core: optional sequencing core ID (e.g. '001C1'). When provided,
+              per-core caller presence is tracked for the CORE_CALLS INFO field.
         """
         for record_repr, record in self.RECORDS.items():
             if record_repr not in target_dict:
                 empty_record = self._create_empty_record(record)
                 target_dict.setdefault(record_repr, {
                     'record': empty_record,
-                    'callers': set()
+                    'callers': set(),
+                    'core_callers': {}   # core -> set(callers)
                 })
 
             # Add caller information
             target_dict[record_repr]['callers'].add(self.caller_name)
+
+            # Track per-core caller presence when core is provided
+            if core is not None:
+                target_dict[record_repr]['core_callers'].setdefault(core, set()).add(self.caller_name)
 
             # Add caller-specific INFO, if any
             shared_record = target_dict[record_repr]['record']
@@ -137,22 +145,13 @@ class RUFUSVcf(VcfHandler):
 ################################################################################
 def validate_input_vcf(value):
     """
-    Validate and return a string of the form CALLER:VCF.
+    Validate and return a string of the form CALLER:VCF or CORE:CALLER:VCF.
     """
-    if ":" not in value:
+    parts = value.split(":", 2)
+    if len(parts) < 2:
         raise argparse.ArgumentTypeError(
-            f"Invalid format '{value}'. Expected CALLER:VCF"
+            f"Invalid format '{value}'. Expected CALLER:VCF or CORE:CALLER:VCF"
         )
-
-    # Enforce allowed CALLER names
-    caller, _ = value.split(":", 1)
-    #if caller not in VALID_CALLERS:
-    #    allowed = ", ".join(VALID_CALLERS)
-    #    raise argparse.ArgumentTypeError(
-    #        f"Caller '{caller}' does not match allowed callers: {allowed}"
-    #    )
-        
-
     return value
 
 def validate_output_vcf(path):
@@ -266,9 +265,14 @@ def bgzip_and_tabix(path):
 def main(args):
 
     # Validate input VCF and create handlers
-    caller_handlers = []
-    for caller_vcf in args.input_vcf:
-        caller, vcf_path = caller_vcf.split(":", 1)
+    # Accepts both CALLER:VCF and CORE:CALLER:VCF formats
+    caller_handlers = []   # list of (core_or_None, handler)
+    for entry in args.input_vcf:
+        parts = entry.split(":", 2)
+        if len(parts) == 3:
+            core, caller, vcf_path = parts
+        else:
+            core, caller, vcf_path = None, parts[0], parts[1]
 
         if caller == "TNhaplotyper2":
             handler = TNhaplotyper2Vcf(vcf_path)
@@ -279,12 +283,12 @@ def main(args):
         elif caller == "RUFUS":
             handler = RUFUSVcf(vcf_path)
 
-        caller_handlers.append(handler)
+        caller_handlers.append((core, handler))
 
     # Merge VCF records
     merged_records = {}
-    for handler in caller_handlers:
-        handler.update_dict(merged_records)
+    for core, handler in caller_handlers:
+        handler.update_dict(merged_records, core=core)
 
     # Decide where to write the uncompressed file
     if args.output_vcf.endswith(".vcf.gz"):
@@ -384,6 +388,15 @@ def main(args):
             # Update CALLERS INFO field
             callers_info = ','.join(sorted(entry['callers']))
             entry['record'].add_tag_info(f"CALLERS={callers_info}")
+
+            # Write CORE_CALLS INFO field if core information was provided
+            core_callers = entry.get('core_callers', {})
+            if core_callers:
+                core_calls_str = '|'.join(
+                    f"{core}:{','.join(sorted(callers))}"
+                    for core, callers in sorted(core_callers.items())
+                )
+                entry['record'].add_tag_info(f"CORE_CALLS={core_calls_str}")
 
             # Write record
             out_vcf.write(entry['record'].to_string())

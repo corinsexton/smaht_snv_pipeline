@@ -7,44 +7,10 @@ import pysam
 ###############################################################################
 def clone_record(rec, out_header):
     """
-    Create a new record in the output VCF that duplicates the input record.
-    This ensures FILTER + INFO fields added to the output header are valid.
+    Duplicate a record into the output header.
+    Copies all INFO and FORMAT/sample fields; FILTER is cleared (overwritten by caller).
+    Handles both single-sample and multi-sample VCFs.
     """
-
-    key_order = [
-        "CrossTech",
-        "CrossCaller",
-        "CrossTissue",
-        "CALLERS",
-        "SR_VAF",
-        "TISSUE_PB_VAF",
-        "TISSUE_ONT_VAF",
-        "POOLED_PB_VAF",
-        "POOLED_ONT_VAF",
-        "TISSUE_SR_VAFS",
-        "SR_ADF",
-        "SR_ADR",
-        "PB_ADF",
-        "PB_ADR",
-        "ONT_ADF",
-        "ONT_ADR",
-        "SB_SRC",
-        "SB_PVAL",
-        "GERMLINE_PVAL",
-        "GERMLINE_PVAL_SR",
-        "GERMLINE_PVAL_PB",
-        "GERMLINE_PVAL_ONT",
-        "PB_PHASING"
-    ]
-
-    info = dict(rec.info)
-    ordered_info = {
-        k: info[k]
-        for k in key_order
-        if k in info
-    }
-
-
     new_rec = out_header.new_record(
         contig=rec.contig,
         start=rec.start,
@@ -52,68 +18,42 @@ def clone_record(rec, out_header):
         id=rec.id,
         qual=rec.qual,
         alleles=rec.alleles,
-        info=ordered_info,
-        filter=None               # we overwrite FILTER
+        filter=None,
     )
 
-    # copy FORMAT/sample fields
+    # Copy all INFO fields present in the output header
+    for key, val in rec.info.items():
+        try:
+            new_rec.info[key] = val
+        except Exception:
+            pass  # field not defined in output header — skip
+
+    # Copy FORMAT/sample fields for every sample
     for sample in rec.samples:
-        new_rec.samples[sample].update(rec.samples[sample].items())
+        try:
+            new_rec.samples[sample].update(rec.samples[sample].items())
+        except Exception:
+            pass
 
     return new_rec
 
+
 def fix_header(header):
     """
-    Create final output header
+    Return a copy of the input header with FILTER definitions added.
+    All FORMAT, INFO, contig, and sample records from the input are preserved.
     """
+    new_header = header.copy()
 
-    final_headers= [
-            '##INFO=<ID=CrossTech,Number=0,Type=Flag,Description="Alt supported in both tissue short read and pooled PacBio data at or above their combined read thresholds">',
-            '##INFO=<ID=CrossCaller,Number=0,Type=Flag,Description="Alt found in more than one variant caller">',
-            '##INFO=<ID=CrossTissue,Number=0,Type=Flag,Description="Alt has VAF > 0 in another short read tissue">',
-            '##INFO=<ID=CALLERS,Number=.,Type=String,Description="List of variant callers that reported this variant">',
-
-            '##INFO=<ID=SR_VAF,Number=1,Type=Float,Description="VAF for short read in current tissue">',
-            '##INFO=<ID=TISSUE_PB_VAF,Number=1,Type=Float,Description="VAF for PacBio in current tissue (if available)">',
-            '##INFO=<ID=TISSUE_ONT_VAF,Number=1,Type=Float,Description="VAF for ONT in current tissue (if available)">',
-            '##INFO=<ID=POOLED_PB_VAF,Number=1,Type=Float,Description="VAF for PacBio in current donor pooled tissues">',
-            '##INFO=<ID=POOLED_ONT_VAF,Number=1,Type=Float,Description="VAF for ONT in current donor pooled tissues">',
-            '##INFO=<ID=TISSUE_SR_VAFS,Number=.,Type=String,Description="VAFs for all tissues with short read nonzero VAF, based on pileup (BQ≥30)">',
-
-            '##INFO=<ID=SR_ADF,Number=2,Type=Integer,Description="Tissue short read forward depths (REF,ALT)">',
-            '##INFO=<ID=SR_ADR,Number=2,Type=Integer,Description="Tissue short read reverse depths (REF,ALT)">',
-            '##INFO=<ID=PB_ADF,Number=2,Type=Integer,Description="Donor pooled Long-read forward depths (REF,ALT)">',
-            '##INFO=<ID=PB_ADR,Number=2,Type=Integer,Description="Donor pooled Long-read reverse depths (REF,ALT)">',
-            '##INFO=<ID=ONT_ADF,Number=2,Type=Integer,Description="Donor pooled ONT forward depths (REF,ALT)">',
-            '##INFO=<ID=ONT_ADR,Number=2,Type=Integer,Description="Donor pooled ONT reverse depths (REF,ALT)">',
-
-            '##INFO=<ID=SB_SRC,Number=1,Type=String,Description="Counts source used for Fisher strand test: PB, ONT, or SR">',
-            '##INFO=<ID=SB_PVAL,Number=1,Type=Float,Description="Fisher p-value for strand balance on chosen sample">',
-            '##INFO=<ID=GERMLINE_PVAL,Number=1,Type=Float,Description="Minimum binomial p-value for germline deviation across all platforms tested">',
-            '##INFO=<ID=GERMLINE_PVAL_SR,Number=1,Type=Float,Description="Binomial p-value for germline deviation in tissue short read data">',
-            '##INFO=<ID=GERMLINE_PVAL_PB,Number=1,Type=Float,Description="Binomial p-value for germline deviation in pooled PacBio data">',
-            '##INFO=<ID=GERMLINE_PVAL_ONT,Number=1,Type=Float,Description="Binomial p-value for germline deviation in pooled ONT data">',
-
-            '##INFO=<ID=PB_PHASING,Number=1,Type=String,Description="Phasing classification from pooled PacBio nearest germline SNV haplotyping">',
-
-            '##FILTER=<ID=HighConf,Description="High confidence variant (CrossTech or CrossCaller+CrossTissue)">',
-            '##FILTER=<ID=LowConf,Description="Low confidence variant (CrossCaller or CrossTissue only)">',
-            '##FILTER=<ID=LikelyArtifact,Description="Variants passing all filters but with no CrossTech, CrossCaller, or CrossTissue evidence, lowest confidence variants">'
+    filter_defs = [
+        ('HighConf',      'High confidence variant (CrossTech is set, or any core has CrossCaller and CrossTissue is set)'),
+        ('LowConf',       'Low confidence variant (any core has CrossCaller, or CrossTissue is set)'),
+        ('LikelyArtifact','Lowest confidence: no CrossTech, CrossCaller, or CrossTissue evidence'),
     ]
 
-    header_list = str(header).split('\n')
-
-    new_header = pysam.VariantHeader()
-    for header_line in header_list:
-        if "fileformat" in header_line or "contig" in header_line:
-            new_header.add_line(header_line)
-        if "SAMPLE" in header_line:
-            sample_line = header_line
-
-    for header_line in final_headers:
-        new_header.add_line(header_line)
-
-    new_header.add_line(sample_line)
+    for flt_id, flt_desc in filter_defs:
+        if flt_id not in new_header.filters:
+            new_header.add_line(f'##FILTER=<ID={flt_id},Description="{flt_desc}">')
 
     return new_header
 
@@ -166,24 +106,31 @@ def main():
     ###########################################################################
     for rec in vcf_in:
 
-        # detection flags
+        # Tissue-level INFO flags
         crossTech   = "CrossTech"   in rec.info
-        crossCaller = "CrossCaller" in rec.info
         crossTissue = "CrossTissue" in rec.info
+
+        # CrossCaller lives in FORMAT (per-core Integer, 1=true).
+        # Any core with CrossCaller=1 counts as cross-caller evidence.
+        any_cross_caller = any(
+            rec.samples[s]["CrossCaller"] == 1
+            for s in rec.samples
+            if rec.samples[s]["CrossCaller"] is not None
+        ) if rec.samples else "CrossCaller" in rec.info  # single-sample fallback
 
         # clone record so filters can be added freely
         new = clone_record(rec, vcf_out.header)
 
-        # Decision tree:
-        # If CrossTech OR (CrossCaller AND CrossTissue) → HighConf
-        # Else if CrossCaller OR CrossTissue → LowConf
-        # Else → LikelyArtifact
+        # Decision tree (plan section 3g):
+        # HighConf     — CrossTech is set OR (any core has CrossCaller AND CrossTissue is set)
+        # LowConf      — any core has CrossCaller OR CrossTissue is set
+        # LikelyArtifact — none of the above
 
         new.filter.clear()
 
-        if crossTech or (crossCaller and crossTissue):
+        if crossTech or (any_cross_caller and crossTissue):
             new.filter.add("HighConf")
-        elif crossCaller or crossTissue:
+        elif any_cross_caller or crossTissue:
             new.filter.add("LowConf")
         else:
             new.filter.add("LikelyArtifact")

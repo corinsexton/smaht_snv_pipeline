@@ -7,6 +7,7 @@ import argparse, sys
 import pysam
 import math
 import re
+from collections import OrderedDict
 from datetime import datetime
 from scipy.stats import fisher_exact
 
@@ -20,6 +21,44 @@ except Exception:
     from scipy.stats import binom_test as _binomtest
     def binom_pvalue(k, n, p, alternative="two-sided"):
         return _binomtest(k, n, p, alternative=alternative)
+
+################################################################################
+### Helpers
+################################################################################
+
+def parse_core_cram_map(path):
+    """Parse core_cram_map.tsv: core \\t cram_basename \\t type (SR|PB|ONT).
+    Returns OrderedDict {core: [(cram_basename, type), ...]} preserving row order.
+    """
+    mapping = OrderedDict()
+    with open(path) as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split('\t')
+            if len(parts) < 3:
+                continue
+            core, basename, ctype = parts[0], parts[1], parts[2]
+            mapping.setdefault(core, []).append((basename, ctype))
+    return mapping
+
+
+def parse_core_calls(info_value):
+    """Parse CORE_CALLS INFO string: '001C1:Strelka2,RUFUS|001A3:Strelka2'.
+    Returns {core: [callers]} or {} if value is None/empty.
+    """
+    if not info_value:
+        return {}
+    result = {}
+    for entry in str(info_value).split('|'):
+        entry = entry.strip()
+        if ':' not in entry:
+            continue
+        core, callers_str = entry.split(':', 1)
+        result[core.strip()] = [c.strip() for c in callers_str.split(',') if c.strip()]
+    return result
+
 
 ################################################################################
 ### Objects
@@ -143,9 +182,10 @@ class MinipileupVCF:
         self.current_tissue = current_tissue
 
         self.counts = dict()  # (chrom, pos, ref, alt) -> {sample: SampleCounts, ...}
-        self.aggregate_counts = dict() # (chrom, pos, ref, alt) -> {PB: SampleCounts, SR: SampleCounts, ONT: SampleCounts}\        self.tissue_pb_counts = dict()  # (chrom,pos,ref,alt) -> SampleCounts("PB_TISSUE")
+        self.aggregate_counts = dict() # (chrom, pos, ref, alt) -> {PB: SampleCounts, SR: SampleCounts, ONT: SampleCounts}
         self.tissue_pb_counts = dict()  # (chrom,pos,ref,alt) -> SampleCounts("PB_TISSUE")
         self.tissue_ont_counts = dict()  # (chrom,pos,ref,alt) -> SampleCounts("ONT_TISSUE")
+        self.core_counts = dict()  # (chrom,pos,ref,alt) -> {core: {SR: SampleCounts, PB: SampleCounts, ONT: SampleCounts}}
 
         self.load_records()
         self.aggregate_by_group()
@@ -284,6 +324,48 @@ class MinipileupVCF:
             self.aggregate_counts[key] = agg
             self.tissue_pb_counts[key] = tissue_pb
             self.tissue_ont_counts[key] = tissue_ont
+
+    def compute_core_counts(self, core_cram_map: dict):
+        """
+        Compute per-core counts for SR, tissue-matched PB, and tissue-matched ONT.
+
+        core_cram_map: OrderedDict {core: [(cram_basename, type), ...]}
+
+        Sets self.core_counts:
+            {key: {core: {SR: SampleCounts, PB: SampleCounts, ONT: SampleCounts}}}
+
+        Sample naming convention (set by minipileup-parallel.sh):
+          SR  → {cram_basename}-SR
+          PB  → {cram_basename}-PB-{tissue}   (tissue-matched)
+          ONT → {cram_basename}-ONT-{tissue}  (tissue-matched)
+        """
+        for key, counts_ in self.counts.items():
+            self.core_counts[key] = {}
+            for core, cram_list in core_cram_map.items():
+                core_agg = {
+                    'SR':  SampleCounts(core + '-SR'),
+                    'PB':  SampleCounts(core + '-PB'),
+                    'ONT': SampleCounts(core + '-ONT'),
+                }
+                for basename, ctype in cram_list:
+                    if ctype == 'SR':
+                        target = f"{basename}-SR"
+                        grp = 'SR'
+                    elif ctype == 'PB':
+                        target = f"{basename}-PB-{self.current_tissue}" if self.current_tissue else f"{basename}-PB"
+                        grp = 'PB'
+                    elif ctype == 'ONT':
+                        target = f"{basename}-ONT-{self.current_tissue}" if self.current_tissue else f"{basename}-ONT"
+                        grp = 'ONT'
+                    else:
+                        continue
+                    sc = counts_.get(target)
+                    if sc is not None:
+                        core_agg[grp].REF_ADF += sc.REF_ADF
+                        core_agg[grp].REF_ADR += sc.REF_ADR
+                        core_agg[grp].ALT_ADF += sc.ALT_ADF
+                        core_agg[grp].ALT_ADR += sc.ALT_ADR
+                self.core_counts[key][core] = core_agg
 
 
 #*******************************************************************************
@@ -481,8 +563,218 @@ class TieredVCF:
         elif chrom in ("M", "MT"): return 25
         else: return int(chrom) if chrom.isdigit() else 26
 
-    def write_tiered_vcf(self, out_vcf_path: str, keep_info: bool=False):
-        """Write tiered VCF to out_vcf_path.
+    def write_tiered_vcf(self, out_vcf_path: str, keep_info: bool=False, core_cram_map: dict=None):
+        """Write tiered VCF. With core_cram_map writes multi-sample per-core VCF; otherwise single-sample."""
+        if core_cram_map:
+            self._write_multisample(out_vcf_path, core_cram_map)
+        else:
+            self._write_singlesample(out_vcf_path, keep_info)
+
+    def _write_multisample(self, out_vcf_path: str, core_cram_map: dict):
+        """Write multi-sample tiered VCF with one sample column per core."""
+        no_pileup_counts, fail_filters = 0, 0
+        written, t1, t2 = 0, 0, 0
+
+        cores = list(core_cram_map.keys())
+
+        # FORMAT field definitions (per-core)
+        format_defs = [
+            '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype: 0/1=called+passed, ./.=not called by any caller in this core">',
+            '##FORMAT=<ID=SR_ADF,Number=2,Type=Integer,Description="Per-core short-read forward depths (REF,ALT)">',
+            '##FORMAT=<ID=SR_ADR,Number=2,Type=Integer,Description="Per-core short-read reverse depths (REF,ALT)">',
+            '##FORMAT=<ID=PB_ADF,Number=2,Type=Integer,Description="Per-core tissue-matched PacBio forward depths (REF,ALT)">',
+            '##FORMAT=<ID=PB_ADR,Number=2,Type=Integer,Description="Per-core tissue-matched PacBio reverse depths (REF,ALT)">',
+            '##FORMAT=<ID=ONT_ADF,Number=2,Type=Integer,Description="Per-core tissue-matched ONT forward depths (REF,ALT)">',
+            '##FORMAT=<ID=ONT_ADR,Number=2,Type=Integer,Description="Per-core tissue-matched ONT reverse depths (REF,ALT)">',
+            '##FORMAT=<ID=SR_VAF,Number=1,Type=Float,Description="Per-core short-read variant allele fraction">',
+            '##FORMAT=<ID=PB_VAF,Number=1,Type=Float,Description="Per-core tissue-matched PacBio variant allele fraction">',
+            '##FORMAT=<ID=ONT_VAF,Number=1,Type=Float,Description="Per-core tissue-matched ONT variant allele fraction">',
+            '##FORMAT=<ID=TIER,Number=1,Type=String,Description="Tier classification: TIER1=LR-supported, TIER2=SR-only (tissue-level)">',
+            '##FORMAT=<ID=SB_PVAL,Number=1,Type=Float,Description="Fisher exact test p-value for strand balance (tissue-level)">',
+            '##FORMAT=<ID=SB_SRC,Number=1,Type=String,Description="Platform used for Fisher strand test: SR or PB (tissue-level)">',
+            '##FORMAT=<ID=GERMLINE_PVAL,Number=1,Type=Float,Description="Min binomial p-value for germline deviation across platforms (tissue-level)">',
+            '##FORMAT=<ID=GERMLINE_PVAL_SR,Number=1,Type=Float,Description="Binomial p-value for germline deviation in SR data (tissue-level, TIER2 only)">',
+            '##FORMAT=<ID=GERMLINE_PVAL_PB,Number=1,Type=Float,Description="Binomial p-value for germline deviation in PB data (tissue-level, TIER1 only)">',
+            '##FORMAT=<ID=GERMLINE_PVAL_ONT,Number=1,Type=Float,Description="Binomial p-value for germline deviation in ONT data (tissue-level, TIER1 only)">',
+            '##FORMAT=<ID=CrossCaller,Number=1,Type=Integer,Description="1 if alt found in more than one caller for this core, 0 otherwise">',
+            '##FORMAT=<ID=CALLERS,Number=.,Type=String,Description="Callers that reported this variant for this core">',
+        ]
+
+        # INFO field definitions (tissue-level)
+        info_defs = [
+            '##INFO=<ID=CrossTech,Number=0,Type=Flag,Description="Alt supported in both short read and tissue-matched PacBio at or above combined thresholds">',
+            '##INFO=<ID=POOLED_PB_VAF,Number=1,Type=Float,Description="Tissue-matched PacBio VAF pooled across all cores">',
+            '##INFO=<ID=POOLED_ONT_VAF,Number=1,Type=Float,Description="Tissue-matched ONT VAF pooled across all cores">',
+            '##INFO=<ID=POOLED_PB_ADF,Number=2,Type=Integer,Description="Tissue-matched PacBio forward depths pooled across all cores (REF,ALT)">',
+            '##INFO=<ID=POOLED_PB_ADR,Number=2,Type=Integer,Description="Tissue-matched PacBio reverse depths pooled across all cores (REF,ALT)">',
+            '##INFO=<ID=POOLED_ONT_ADF,Number=2,Type=Integer,Description="Tissue-matched ONT forward depths pooled across all cores (REF,ALT)">',
+            '##INFO=<ID=POOLED_ONT_ADR,Number=2,Type=Integer,Description="Tissue-matched ONT reverse depths pooled across all cores (REF,ALT)">',
+            '##INFO=<ID=REGION,Number=1,Type=String,Description="SMaHT region classification: easy, diff, or ext">',
+            '##INFO=<ID=CORE_CALLS,Number=1,Type=String,Description="Per-core caller presence: core1:caller1,caller2|core2:caller1">',
+        ]
+
+        with pysam.VariantFile(self.original_vcf.vcf_path) as vf_in:
+            in_header = vf_in.header
+
+            # Build new header
+            new_header = pysam.VariantHeader()
+            for contig_name, contig in in_header.contigs.items():
+                if contig.length is not None:
+                    new_header.add_line(f'##contig=<ID={contig_name},length={contig.length}>')
+                else:
+                    new_header.add_line(f'##contig=<ID={contig_name}>')
+            for fd in format_defs:
+                new_header.add_line(fd)
+            for id_ in info_defs:
+                new_header.add_line(id_)
+            for core in cores:
+                new_header.add_sample(core)
+
+            with pysam.VariantFile(out_vcf_path, "w", header=new_header) as vf_out:
+                for key in sorted(self.snvs, key=lambda k: (self.chrom_order(k[0]), k[1])):
+                    if key not in self.minipileup_vcf.aggregate_counts:
+                        no_pileup_counts += 1
+                        continue
+
+                    tier = self.tiers.get(key)
+                    if tier not in {"TIER1", "TIER2"}:
+                        continue
+
+                    fisher_result = self.tests[key]["fisher"]
+                    binom_result  = self.tests[key]["binomial"]
+                    fisher_pass   = fisher_result.is_pass(self.strand_alpha)
+
+                    if tier == "TIER2":
+                        binom_pass      = binom_result.is_pass("SR", self.germline_alpha_SR)
+                        binom_pass_long = True
+                    else:
+                        binom_pass_pb  = binom_result.is_pass("PB",  self.germline_alpha)
+                        binom_pass_ont = binom_result.is_pass("ONT", self.germline_alpha)
+                        binom_pass, binom_pass_long = True, True
+                        if binom_pass_pb is False or binom_pass_ont is False:
+                            binom_pass_long = False
+
+                    if fisher_pass is False or binom_pass is False or binom_pass_long is False:
+                        fail_filters += 1
+                        continue
+
+                    orig_rec = self.snvs[key]
+                    chrom, pos, ref, alt = key
+
+                    # Parse CORE_CALLS to determine which cores called this variant
+                    core_calls_raw = orig_rec.info.get("CORE_CALLS")
+                    core_calls     = parse_core_calls(core_calls_raw)
+
+                    # REGION (preserved from upstream filters)
+                    region_val = orig_rec.info.get("REGION")
+
+                    # Tissue-level pooled counts (tissue-matched PB and ONT)
+                    tpb  = self.minipileup_vcf.tissue_pb_counts.get(key)  or SampleCounts("PB_TISSUE")
+                    tont = self.minipileup_vcf.tissue_ont_counts.get(key) or SampleCounts("ONT_TISSUE")
+
+                    tpb_total  = tpb.REF_ADF  + tpb.REF_ADR  + tpb.ALT_ADF  + tpb.ALT_ADR
+                    tont_total = tont.REF_ADF + tont.REF_ADR + tont.ALT_ADF + tont.ALT_ADR
+
+                    pooled_pb_vaf  = float(tpb.ALT_ADF  + tpb.ALT_ADR)  / tpb_total  if tpb_total  > 0 else None
+                    pooled_ont_vaf = float(tont.ALT_ADF + tont.ALT_ADR) / tont_total if tont_total > 0 else None
+
+                    # Create new record
+                    new_rec = new_header.new_record(
+                        contig=chrom,
+                        start=orig_rec.start,
+                        stop=orig_rec.stop,
+                        alleles=(ref, alt),
+                        id=orig_rec.id,
+                        qual=orig_rec.qual,
+                    )
+
+                    # Set tissue-level INFO fields
+                    if tier == 'TIER1':
+                        new_rec.info['CrossTech'] = True
+                    if pooled_pb_vaf is not None:
+                        new_rec.info['POOLED_PB_VAF']  = pooled_pb_vaf
+                    if pooled_ont_vaf is not None:
+                        new_rec.info['POOLED_ONT_VAF'] = pooled_ont_vaf
+                    new_rec.info['POOLED_PB_ADF']  = (tpb.REF_ADF,  tpb.ALT_ADF)
+                    new_rec.info['POOLED_PB_ADR']  = (tpb.REF_ADR,  tpb.ALT_ADR)
+                    new_rec.info['POOLED_ONT_ADF'] = (tont.REF_ADF, tont.ALT_ADF)
+                    new_rec.info['POOLED_ONT_ADR'] = (tont.REF_ADR, tont.ALT_ADR)
+                    if region_val is not None:
+                        new_rec.info['REGION'] = region_val
+                    if core_calls_raw is not None:
+                        new_rec.info['CORE_CALLS'] = core_calls_raw
+
+                    # Tissue-level test results (same across all cores)
+                    sb_pval    = fisher_result.p_value
+                    sb_src     = fisher_result.group
+                    gp_sr      = binom_result.p_value_SR
+                    gp_pb      = binom_result.p_value_PB
+                    gp_ont     = binom_result.p_value_ONT
+                    all_gp     = [p for p in [gp_sr, gp_pb, gp_ont] if p is not None]
+                    gp_min     = min(all_gp) if all_gp else None
+
+                    # Per-core FORMAT fields
+                    per_core = self.minipileup_vcf.core_counts.get(key, {})
+
+                    for core in cores:
+                        called = core in core_calls
+                        cc = per_core.get(core, {
+                            'SR':  SampleCounts(core),
+                            'PB':  SampleCounts(core),
+                            'ONT': SampleCounts(core),
+                        })
+                        sr  = cc['SR']
+                        pb  = cc['PB']
+                        ont = cc['ONT']
+
+                        new_rec.samples[core]['GT'] = '0/1' if called else './.'
+
+                        new_rec.samples[core]['SR_ADF']  = (sr.REF_ADF,  sr.ALT_ADF)
+                        new_rec.samples[core]['SR_ADR']  = (sr.REF_ADR,  sr.ALT_ADR)
+                        new_rec.samples[core]['PB_ADF']  = (pb.REF_ADF,  pb.ALT_ADF)
+                        new_rec.samples[core]['PB_ADR']  = (pb.REF_ADR,  pb.ALT_ADR)
+                        new_rec.samples[core]['ONT_ADF'] = (ont.REF_ADF, ont.ALT_ADF)
+                        new_rec.samples[core]['ONT_ADR'] = (ont.REF_ADR, ont.ALT_ADR)
+
+                        sr_total  = sr.REF_ADF  + sr.REF_ADR  + sr.ALT_ADF  + sr.ALT_ADR
+                        pb_total  = pb.REF_ADF  + pb.REF_ADR  + pb.ALT_ADF  + pb.ALT_ADR
+                        ont_total = ont.REF_ADF + ont.REF_ADR + ont.ALT_ADF + ont.ALT_ADR
+
+                        new_rec.samples[core]['SR_VAF']  = float(sr.ALT_ADF  + sr.ALT_ADR)  / sr_total  if sr_total  > 0 else 0.0
+                        new_rec.samples[core]['PB_VAF']  = float(pb.ALT_ADF  + pb.ALT_ADR)  / pb_total  if pb_total  > 0 else 0.0
+                        new_rec.samples[core]['ONT_VAF'] = float(ont.ALT_ADF + ont.ALT_ADR) / ont_total if ont_total > 0 else 0.0
+
+                        new_rec.samples[core]['TIER']   = tier
+                        new_rec.samples[core]['SB_PVAL'] = sb_pval
+                        new_rec.samples[core]['SB_SRC']  = sb_src
+                        if gp_min is not None:
+                            new_rec.samples[core]['GERMLINE_PVAL'] = gp_min
+                        if gp_sr is not None and tier == 'TIER2':
+                            new_rec.samples[core]['GERMLINE_PVAL_SR'] = gp_sr
+                        if gp_pb is not None and tier == 'TIER1':
+                            new_rec.samples[core]['GERMLINE_PVAL_PB'] = gp_pb
+                        if gp_ont is not None and tier == 'TIER1':
+                            new_rec.samples[core]['GERMLINE_PVAL_ONT'] = gp_ont
+
+                        if called:
+                            core_callers = core_calls[core]
+                            new_rec.samples[core]['CrossCaller'] = 1 if len(core_callers) > 1 else 0
+                            new_rec.samples[core]['CALLERS']     = core_callers
+                        else:
+                            new_rec.samples[core]['CrossCaller'] = 0
+
+                    vf_out.write(new_rec)
+                    written += 1
+                    t1 += (tier == "TIER1")
+                    t2 += (tier == "TIER2")
+
+        print(f"INFO: Wrote multi-sample tiered VCF to {out_vcf_path}.")
+        print(f"REPORT: wrote {written} records (TIER1={t1}, TIER2={t2}).")
+        print(f"REPORT: {no_pileup_counts} variants with no pileup counts.")
+        print(f"REPORT: {fail_filters} variants failing filters.")
+
+    def _write_singlesample(self, out_vcf_path: str, keep_info: bool=False):
+        """Write tiered VCF to out_vcf_path (single-sample legacy mode).
         """
         no_pileup_counts, fail_filters = 0, 0
         written, t1, t2 = 0, 0, 0
@@ -614,7 +906,7 @@ if __name__ == "__main__":
     parser.add_argument("--current_tissue", default=None,
                     help="Tissue ID for this run (e.g. SMHT005-3AF). Used to compute TISSUE_PB_VAF from samples named *-PB-<current_tissue>.")
     parser.add_argument("--core_cram_map", default=None,
-                    help="TSV file mapping core -> CRAM basename -> type (SR/PB/ONT). Used for multi-sample per-core FORMAT output (implemented in a later step).")
+                    help="TSV file mapping core -> CRAM basename -> type (SR/PB/ONT). When provided, writes a multi-sample VCF with one sample column per core.")
 
     parser.add_argument("--strand_alpha", type=float, default=0.01,
                     help="Keep if Fisher p >= this (default: 0.01)")
@@ -633,6 +925,12 @@ if __name__ == "__main__":
 
     ovcf  = OriginalVCF(args.input_vcf)
     mpvcf = MinipileupVCF(args.minipileup_vcf, ovcf, current_tissue=args.current_tissue)
+
+    core_cram_map_data = None
+    if args.core_cram_map:
+        core_cram_map_data = parse_core_cram_map(args.core_cram_map)
+        mpvcf.compute_core_counts(core_cram_map_data)
+
     tvcf  = TieredVCF(
         ovcf, mpvcf,
         strand_alpha=args.strand_alpha,
@@ -641,7 +939,7 @@ if __name__ == "__main__":
         min_alt_PB=args.min_alt_PB,
         min_alt_binom=args.min_alt_binom,
     )
-    tvcf.write_tiered_vcf(args.output_vcf, args.keep_info)
+    tvcf.write_tiered_vcf(args.output_vcf, args.keep_info, core_cram_map=core_cram_map_data)
 
     if args.output_vcf.endswith(".vcf.gz"):
         pysam.tabix_index(args.output_vcf, preset="vcf", force=True)

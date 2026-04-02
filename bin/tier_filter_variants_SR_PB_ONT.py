@@ -611,7 +611,10 @@ if __name__ == "__main__":
     parser.add_argument("-m", "--minipileup_vcf", required=True, help="Minipileup VCF with ADF/ADR counts. Compressed (.vcf.gz) or uncompressed (.vcf) VCF")
     parser.add_argument("-o", "--output_vcf", required=True, help="Output VCF with tiered and filtered variants. Compressed (.vcf.gz) or uncompressed (.vcf) VCF")
 
-    parser.add_argument("--current_tissue",default=None,help="Tissue ID for this run (e.g. SMHT005-3AF). Used to compute TISSUE_PB_VAF from samples named *-PB-<current_tissue>.")
+    parser.add_argument("--current_tissue", default=None,
+                    help="Tissue ID for this run (e.g. SMHT005-3AF). Used to compute TISSUE_PB_VAF from samples named *-PB-<current_tissue>.")
+    parser.add_argument("--core_cram_map", default=None,
+                    help="TSV file mapping core -> CRAM basename -> type (SR/PB/ONT). Used for multi-sample per-core FORMAT output (implemented in a later step).")
 
     parser.add_argument("--strand_alpha", type=float, default=0.01,
                     help="Keep if Fisher p >= this (default: 0.01)")

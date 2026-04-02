@@ -284,7 +284,7 @@ workflow {
 
     vep_snvs_out = run_vep(vep_input, regions_input)
 
-    tier_split_output = split_tier1_tier2(vep_snvs_out.join(truth_ch), input_bams, ref_input, regions_input, file(params.genome_chunks))
+    tier_split_output = split_tier1_tier2(vep_snvs_out.join(truth_ch), input_bams, ref_input, regions_input, file(params.genome_chunks), core_cram_map)
 
     phasing_output = phasing(tier_split_output, germline_calls_ch, input_bams, ref_input, vep_config, regions_input, sex_ch)
 

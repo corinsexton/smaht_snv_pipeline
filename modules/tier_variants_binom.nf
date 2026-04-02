@@ -15,10 +15,11 @@ process tier_variants_binom {
     tag "$id"
 
     input:
-    tuple val(id), 
+    tuple val(id),
           path(vcf), path(tbi),
           path(truth_vcf), path(truth_vcf_tbi),
-          path(minipileup_vcf), path(minipileup_vcf_tbi)
+          path(minipileup_vcf), path(minipileup_vcf_tbi),
+          path(core_cram_map)
     tuple path(easy_regions), path(diff_regions), path(ext_regions),
         path(easy_regions_tbi), path(diff_regions_tbi), path(ext_regions_tbi)
 
@@ -34,7 +35,8 @@ process tier_variants_binom {
         -i ${vcf} \
         -m ${minipileup_vcf} \
         --current_tissue ${id} \
-        -o "${id}.tiered.vcf.gz" 
+        --core_cram_map ${core_cram_map} \
+        -o "${id}.tiered.vcf.gz"
 
 
     # --- metrics (standard schema) ---

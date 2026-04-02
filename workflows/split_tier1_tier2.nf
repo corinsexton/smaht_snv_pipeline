@@ -14,6 +14,7 @@ workflow split_tier1_tier2 {
         ref_input
         regions_input
         genome_chunks
+        core_cram_map    // (tissue, path) — core→CRAM-basename mapping for tier script
 
     main: 
 
@@ -69,10 +70,14 @@ workflow split_tier1_tier2 {
                 tuple(id, mp_vcfs, mp_tbis, vcf, tbi, truth_vcf, truth_vcf_tbi) } 
         .set { merged_minipileups_input } 
     
-    merge_minipileup_chunks(merged_minipileups_input) 
-    
+    merge_minipileup_chunks(merged_minipileups_input)
 
-    tier_variants_binom(merge_minipileup_chunks.out,regions_input)
+    // Join merged pileup output with the per-tissue core→CRAM map before tiering
+    merge_minipileup_chunks.out
+        .join(core_cram_map)
+        .set { tier_input }
+
+    tier_variants_binom(tier_input, regions_input)
     
     emit: 
         tier_variants_binom.out.vcf 

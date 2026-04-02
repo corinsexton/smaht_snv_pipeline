@@ -255,16 +255,21 @@ for key_pos, tissue_dict in aggregated_vaf.items():
 ############################################################
 orig = pysam.VariantFile(args.orig_vcf)
 
-orig.header.info.add("SR_VAF", number=1, type="Float",
-                     description="VAF for short read in current tissue")
-orig.header.info.add("POOLED_PB_VAF", number=1, type="Float",
-                     description="VAF for PacBio in current donor pooled tissues")
-orig.header.info.add("POOLED_ONT_VAF", number=1, type="Float",
-                     description="VAF for ONT in current donor pooled tissues")
-orig.header.info.add("TISSUE_SR_VAFS", number=".", type="String",
-                     description="VAFs for all tissues with short read nonzero VAF based on pileups, reads with BQ>30")
-orig.header.info.add("CrossTissue", number=0, type="Flag",
-                     description="Variant has VAF > 0 in another tissue")
+# Only add INFO fields that are not already defined in the input header
+# (POOLED_PB_VAF and POOLED_ONT_VAF are written by tier_filter; adding
+# them again would produce a duplicate header error)
+if "TISSUE_SR_VAFS" not in orig.header.info:
+    orig.header.info.add("TISSUE_SR_VAFS", number=".", type="String",
+                         description="VAFs for all tissues with short read nonzero VAF based on pileups, reads with BQ>30")
+if "CrossTissue" not in orig.header.info:
+    orig.header.info.add("CrossTissue", number=0, type="Flag",
+                         description="Variant has VAF > 0 in another tissue")
+if "POOLED_PB_VAF" not in orig.header.info:
+    orig.header.info.add("POOLED_PB_VAF", number=1, type="Float",
+                         description="VAF for PacBio in current donor pooled tissues")
+if "POOLED_ONT_VAF" not in orig.header.info:
+    orig.header.info.add("POOLED_ONT_VAF", number=1, type="Float",
+                         description="VAF for ONT in current donor pooled tissues")
 
 out = pysam.VariantFile(args.out, "w", header=orig.header)
 
@@ -274,21 +279,6 @@ out = pysam.VariantFile(args.out, "w", header=orig.header)
 for rec in orig:
     key_pos = (rec.chrom, rec.pos)
 
-    # Add current tissue VAF only if >0 for that tissue
-    vaf_dict = aggregated_vaf.get(key_pos, {})
-
-    try:
-        sr_adf = rec.info.get("SR_ADF")
-        sr_adr = rec.info.get("SR_ADR")
-        if sr_adf and sr_adr and len(sr_adf) > 1 and len(sr_adr) > 1:
-            ref = sr_adf[0] + sr_adr[0]
-            alt = sr_adf[1] + sr_adr[1]
-            if ref + alt > 0:
-                rec.info["SR_VAF"] = float(alt / (ref + alt))
-    except Exception:
-        rec.info["SR_VAF"] = 0.0
-        pass
-
     # Add TISSUE_SR_VAFS if any
     if key_pos in summary:
         rec.info["TISSUE_SR_VAFS"] = summary[key_pos]
@@ -297,35 +287,32 @@ for rec in orig:
     if key_pos in crosstissue_flag:
         rec.info["CrossTissue"] = True
 
-    ############################################################
-    # POOLED_PB_VAF (using PB_ADF/PB_ADR, assuming Number=R [ref, alt...])
-    # This still assumes index 1 is the mosaic ALT as before.
-    # If needed, we can extend alt-index logic here similarly.
-    ############################################################
-    try:
-        lr_adf = rec.info.get("PB_ADF")
-        lr_adr = rec.info.get("PB_ADR")
-        if lr_adf and lr_adr and len(lr_adf) > 1 and len(lr_adr) > 1:
-            ref = lr_adf[0] + lr_adr[0]
-            alt = lr_adf[1] + lr_adr[1]
-            if ref + alt > 0:
-                rec.info["POOLED_PB_VAF"] = float(alt / (ref + alt))
-    except Exception:
-        pass
+    # POOLED_PB_VAF: tier_filter already wrote this from tissue-matched PB counts.
+    # Recompute here only if absent (single-sample legacy path) using POOLED_PB_ADF/ADR.
+    if "POOLED_PB_VAF" not in rec.info:
+        try:
+            lr_adf = rec.info.get("POOLED_PB_ADF")
+            lr_adr = rec.info.get("POOLED_PB_ADR")
+            if lr_adf and lr_adr and len(lr_adf) > 1 and len(lr_adr) > 1:
+                ref = lr_adf[0] + lr_adr[0]
+                alt = lr_adf[1] + lr_adr[1]
+                if ref + alt > 0:
+                    rec.info["POOLED_PB_VAF"] = float(alt / (ref + alt))
+        except Exception:
+            pass
 
-    ############################################################
-    # POOLED_ONT_VAF (using ONT_ADF/ONT_ADR, assuming Number=R [ref, alt...])
-    ############################################################
-    try:
-        ont_adf = rec.info.get("ONT_ADF")
-        ont_adr = rec.info.get("ONT_ADR")
-        if ont_adf and ont_adr and len(ont_adf) > 1 and len(ont_adr) > 1:
-            ref = ont_adf[0] + ont_adr[0]
-            alt = ont_adf[1] + ont_adr[1]
-            if ref + alt > 0:
-                rec.info["POOLED_ONT_VAF"] = float(alt / (ref + alt))
-    except Exception:
-        pass
+    # POOLED_ONT_VAF: same — recompute only if absent.
+    if "POOLED_ONT_VAF" not in rec.info:
+        try:
+            ont_adf = rec.info.get("POOLED_ONT_ADF")
+            ont_adr = rec.info.get("POOLED_ONT_ADR")
+            if ont_adf and ont_adr and len(ont_adf) > 1 and len(ont_adr) > 1:
+                ref = ont_adf[0] + ont_adr[0]
+                alt = ont_adf[1] + ont_adr[1]
+                if ref + alt > 0:
+                    rec.info["POOLED_ONT_VAF"] = float(alt / (ref + alt))
+        except Exception:
+            pass
 
     out.write(rec)
 

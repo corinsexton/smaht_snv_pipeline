@@ -61,203 +61,164 @@ def ref_dict = file(params.ref_dict)
 def ref_input = tuple(ref_fa, ref_fai, ref_dict)
 
 
-// ---------- helper to parse cram/crai CSV ----------
+// ---------- helper to parse CRAM samplesheet ----------
+// New format: tissue,core,cram,crai (header-based, one row per CRAM file)
 def parse_cram_csv(csv_path) {
     Channel
         .fromPath(csv_path)
-        .splitCsv(header: false)
-        .filter { row ->
-            // Skip header line if first column starts with 'id' (case-insensitive)
-            !(row[0]?.toString()?.toLowerCase()?.startsWith('id'))
-        }
+        .splitCsv(header: true)
         .map { row ->
-            // row is now a List of values, not a Map
-            def id = row[0].toString().trim()
-            def fields = row.drop(1).findAll { it && it.trim() }
-
-            // Sanity check: ensure pairs of CRAM and CRAI
-            if (fields.size() % 2 != 0) {
-                log.warn "Row for ${id} has an odd number of CRAM/CRAI entries in ${csv_path} (${fields.size()})"
-            }
-
-            def crams = (0..<fields.size()/2).collect { i -> file(fields[2*i].trim()) }
-            def crais = (0..<fields.size()/2).collect { i -> file(fields[2*i+1].trim()) }
-
-            //log.info "Parsed ${crams.size()} CRAM/CRAI pairs for ${id}"
-            tuple(id, crams, crais)
+            tuple(
+                row.tissue.trim(),
+                row.core.trim(),
+                file(row.cram.trim()),
+                file(row.crai.trim())
+            )
         }
 }
 
 def input_sr  = parse_cram_csv(params.shortread_csv)
-def input_lr  = params.longread_csv ? parse_cram_csv(params.longread_csv) : Channel.empty()
-def input_ont = params.ont_csv      ? parse_cram_csv(params.ont_csv) : Channel.empty()
+def input_lr  = params.longread_csv ? parse_cram_csv(params.longread_csv)  : Channel.empty()
+def input_ont = params.ont_csv      ? parse_cram_csv(params.ont_csv)       : Channel.empty()
 
-// ---------- get all donor sr for final cross tissue check --------
-//
-// Extract donor + tissue, group by donor, and include CRAMs + CRAIs
-//
+// ---------- SR: tissue-level pool (all cores pooled, for minipileup) ----------
 input_sr
-    .map { id, crams, crais ->
-        def (donor, tissue) = id.tokenize('-')
-        tuple(id, donor, tissue, crams, crais)
+    .map { tissue, core, cram, crai -> tuple(tissue, cram, crai) }
+    .groupTuple(by: 0)
+    .map { tissue, crams, crais -> tuple(tissue, crams, crais) }
+    .set { sr_by_tissue }
+
+// ---------- SR: donor-level pool (all tissues, for cross-tissue check) ----------
+input_sr
+    .map { tissue, core, cram, crai ->
+        def donor = tissue.tokenize('-')[0]
+        tuple(donor, tissue, cram, crai)
     }
-    .groupTuple(by: 1)   // group by donor
-    .map { ids, donor, tissues, crams, crais ->
-        // grouped_entries contains tuples: [id, donor, tissue, crams, crais]
-
-        // Flatten donor-level crams & crais (maintains pairing)
-        def flat_crams  = crams.flatten()
-        def flat_crais  = crais.flatten()
-
-        // Expand tissue labels so each CRAM has one
-        def expanded_tissues = []
-        tissues.eachWithIndex { tissue, i ->
-            expanded_tissues.addAll( Collections.nCopies(crams[i].size(), tissue) )
-        }
-
-        // Return donor-level aggregate
-        tuple(donor, ids, flat_crams, flat_crais, expanded_tissues)
+    .groupTuple(by: 0)
+    .map { donor, tissues, crams, crais ->
+        tuple(donor, crams, crais, tissues)   // tissue label per CRAM = source tissue
     }
-    .flatMap { donor, all_ids, crams, crais, tissues ->
-        // For each original id, emit donor-level data
-        all_ids.collect { id ->
-            tuple(id, crams, crais, tissues)
+    .flatMap { donor, crams, crais, tissue_labels ->
+        tissue_labels.unique().collect { tissue ->
+            tuple(tissue, crams, crais, tissue_labels)
         }
     }
     .set { sr_by_donor }
 
-// all SR ids, keyed by donor, so we can “project” LR donor aggregates onto every SR id
-input_sr
-    .map { id, crams, crais ->
-        def (donor, tissue) = id.tokenize('-')
-        tuple(donor, id, tissue)   // key=donor, keep id and tissue
+// ---------- helper: donor → tissue mapping (for LR/ONT projection) ----------
+sr_by_tissue
+    .map { tissue, crams, crais ->
+        def donor = tissue.tokenize('-')[0]
+        tuple(donor, tissue)
     }
     .set { sr_ids_by_donor }
-//sr_ids_by_donor.view()
-// ---------- get all donor lr for minipileup --------
-//
-// Extract donor + tissue, group by donor, and include CRAMs + CRAIs
-//
+
+// ---------- LR: donor-level aggregate (pooled across all donor tissues) ----------
 input_lr
-    .map { id, crams, crais ->
-        def (donor, tissue) = id.tokenize('-')
-        tuple(id, donor, crams, crais)
+    .map { tissue, core, cram, crai ->
+        def donor = tissue.tokenize('-')[0]
+        tuple(donor, tissue, cram, crai)
     }
-    .groupTuple(by: 1)   // group by donor
-    .map { ids, donor, crams, crais ->
-        // grouped_entries contains tuples: [id, donor, crams, crais]
-
-        // Flatten donor-level crams & crais (maintains pairing)
-        def flat_crams  = crams.flatten()
-        def flat_crais  = crais.flatten()
-
-        // Expand tissue labels so each CRAM has one
-        def expanded_ids = []
-        ids.eachWithIndex { id, i ->
-            expanded_ids.addAll( Collections.nCopies(crams[i].size(), id) )
-        }
-
-        // Return donor-level aggregate
-        tuple(donor, flat_crams, flat_crais, expanded_ids)
+    .groupTuple(by: 0)
+    .map { donor, tissues, crams, crais ->
+        tuple(donor, crams, crais, tissues)
     }
     .set { lr_donor_agg }
 
-//lr_donor_agg.view()
-
-// Project LR donor aggregate onto every SR id for that donor
+// Project LR onto every SR tissue for that donor
 sr_ids_by_donor
-    .combine(lr_donor_agg, by: 0) 
-    .map { donor, id, tissue, lr_crams, lr_crais, lr_tissues ->
-        tuple(id, lr_crams, lr_crais, lr_tissues)
+    .combine(lr_donor_agg, by: 0)
+    .map { donor, tissue, lr_crams, lr_crais, lr_tissues ->
+        tuple(tissue, lr_crams, lr_crais, lr_tissues)
     }
-    .set { lr_by_donor }
+    .set { lr_by_tissue }
 
-// ---------- get all donor ont for minipileup --------
-//
-// Extract donor + tissue, group by donor, and include CRAMs + CRAIs
-//
+// ---------- ONT: donor-level aggregate (optional; map lookup handles missing donors) ----------
 input_ont
-    .map { id, crams, crais ->
-        def (donor, tissue) = id.tokenize('-')
-        tuple(id, donor, crams, crais)
+    .map { tissue, core, cram, crai ->
+        def donor = tissue.tokenize('-')[0]
+        tuple(donor, tissue, cram, crai)
     }
-    .groupTuple(by: 1)   // group by donor
-    .map { ids, donor, crams, crais ->
-        // grouped_entries contains tuples: [id, donor, tissue, crams, crais]
-
-        // Flatten donor-level crams & crais (maintains pairing)
-        def flat_crams  = crams.flatten()
-        def flat_crais  = crais.flatten()
-
-        // Expand tissue labels so each CRAM has one
-        def expanded_ids = []
-        ids.eachWithIndex { id, i ->
-            expanded_ids.addAll( Collections.nCopies(crams[i].size(), id) )
-        }
-
-        // Return donor-level aggregate
-        tuple(donor, flat_crams, flat_crais, expanded_ids)
+    .groupTuple(by: 0)
+    .map { donor, tissues, crams, crais ->
+        tuple(donor, crams, crais, tissues)
     }
     .set { ont_donor_agg }
 
-// 1. Convert the aggregated ONT channel into a single lookup Map
 ont_donor_map = ont_donor_agg
-    .map { donor, flat_crams, flat_crais, expanded_ids ->
-        // Prepare as key-value pairs: [key, [values]]
-        tuple(donor, tuple(flat_crams, flat_crais, expanded_ids))
+    .map { donor, crams, crais, tissues ->
+        tuple(donor, tuple(crams, crais, tissues))
     }
     .toList()
     .map { list -> list.collectEntries() }
 
-// 2. Project ONT donor aggregate onto every SR id using the Map
 sr_ids_by_donor
-    .combine(ont_donor_map) // Appends the Map to every element in sr_ids_by_donor
-    .map { donor, id, tissue, ont_map ->
-
-        // Look up the donor in our dictionary
-        def ont_data = ont_map[donor]
-
-        // If the donor exists, grab the data; otherwise, default to empty arrays
+    .combine(ont_donor_map)
+    .map { donor, tissue, ont_map ->
+        def ont_data    = ont_map[donor]
         def ont_crams   = ont_data ? ont_data[0] : []
         def ont_crais   = ont_data ? ont_data[1] : []
         def ont_tissues = ont_data ? ont_data[2] : []
-
-        tuple(id, ont_crams, ont_crais, ont_tissues)
+        tuple(tissue, ont_crams, ont_crais, ont_tissues)
     }
-    .set { ont_by_donor }
+    .set { ont_by_tissue }
 
-
-//// Project LR donor aggregate onto every SR id for that donor
-//sr_ids_by_donor
-//    .combine(ont_donor_agg, by: 0) 
-//    .map { donor, id, tissue, lr_crams, lr_crais, lr_tissues ->
-//        tuple(id, lr_crams, lr_crais, lr_tissues)
-//    }
-//    .set { ont_by_donor }
-
-// ---------- merge all by sample ID ----------
-def input_bams = input_sr
-    .join(lr_by_donor)
-    .join(ont_by_donor)
-    .map { id, sr_crams, sr_crais, lr_crams, lr_crais, lr_tissues, ont_crams, ont_crais, ont_tissues ->
-            if( !sr_crams || sr_crams.size() == 0 ) {
-            throw new IllegalArgumentException("Sample ${id} has no short-read CRAMs — at least one required")
-            }
-
-        tuple(id, sr_crams, sr_crais, lr_crams, lr_crais, lr_tissues, ont_crams, ont_crais, ont_tissues)
+// ---------- Combined tissue-level BAM channel ----------
+def input_bams = sr_by_tissue
+    .join(lr_by_tissue)
+    .join(ont_by_tissue)
+    .map { tissue, sr_crams, sr_crais, lr_crams, lr_crais, lr_tissues, ont_crams, ont_crais, ont_tissues ->
+        if (!sr_crams || sr_crams.size() == 0) {
+            throw new IllegalArgumentException(“Tissue ${tissue} has no short-read CRAMs — at least one required”)
+        }
+        tuple(tissue, sr_crams, sr_crais, lr_crams, lr_crais, lr_tissues, ont_crams, ont_crais, ont_tissues)
     }
+
+// ---------- Core → CRAM-basename mapping per tissue (for tier script) ----------
+// Format: core \t cram_basename \t type  (type = SR | PB | ONT)
+// Only tissue-matched CRAMs are included (LR/ONT keyed by their source tissue).
+def cram_map_sr = input_sr
+    .map { tissue, core, cram, crai ->
+        def basename = cram.name.replaceAll(/\.(cram|bam)$/, '')
+        [“${tissue}.core_cram_map.tsv”, “${core}\t${basename}\tSR\n”]
+    }
+
+def cram_map_lr = params.longread_csv ? input_lr
+    .map { tissue, core, cram, crai ->
+        def basename = cram.name.replaceAll(/\.(cram|bam)$/, '')
+        [“${tissue}.core_cram_map.tsv”, “${core}\t${basename}\tPB\n”]
+    } : Channel.empty()
+
+def cram_map_ont = params.ont_csv ? input_ont
+    .map { tissue, core, cram, crai ->
+        def basename = cram.name.replaceAll(/\.(cram|bam)$/, '')
+        [“${tissue}.core_cram_map.tsv”, “${core}\t${basename}\tONT\n”]
+    } : Channel.empty()
+
+cram_map_sr.mix(cram_map_lr).mix(cram_map_ont)
+    .collectFile { item -> item }
+    .map { f ->
+        def tissue = f.name.replace('.core_cram_map.tsv', '')
+        tuple(tissue, f)
+    }
+    .set { core_cram_map }
 
 /////
 
+// ---------- VCF samplesheet ----------
+// New format: tissue,core,gcc,caller,caller_vcf (header-based)
 def input_vcfs = Channel
     .fromPath(params.input_vcfs)
     .splitCsv(header: true)
     .map { row ->
-        def id  = row.id
-        def caller = row.caller
-        def vcf = file(row.vcf)
-        def tbi = file(row.vcf + '.tbi')
-        tuple(id, caller, vcf, tbi)
+        tuple(
+            row.tissue.trim(),
+            row.core.trim(),
+            row.gcc.trim(),
+            row.caller.trim(),
+            file(row.caller_vcf.trim()),
+            file(row.caller_vcf.trim() + '.tbi')
+        )
     }
 
 def truth_ch = Channel
@@ -265,8 +226,8 @@ def truth_ch = Channel
     .splitCsv(header: true)
     .map{ row ->
         def id = row.id
-        def truth_vcf = row.truth_vcf ? file(row.truth_vcf) : file("none.vcf")
-        def truth_tbi = row.truth_vcf ? file(row.truth_vcf + '.tbi') : file("none.vcf.tbi")
+        def truth_vcf = row.truth_vcf ? file(row.truth_vcf) : file(“none.vcf”)
+        def truth_tbi = row.truth_vcf ? file(row.truth_vcf + '.tbi') : file(“none.vcf.tbi”)
         tuple(id, truth_vcf, truth_tbi)
     }
 
@@ -293,9 +254,12 @@ def sex_ch = Channel
 
 workflow {
 
-    // remove first filters
+    // Strip core/gcc columns — preprocess_merge_callers updated in later commit
+    vcfs_for_merge = input_vcfs
+        .map { tissue, core, gcc, caller, vcf, tbi -> tuple(tissue, caller, vcf, tbi) }
+
     merged_calls = preprocess_merge_callers(
-        input_vcfs.combine(truth_ch, by: 0),
+        vcfs_for_merge.combine(truth_ch, by: 0),
         params.ref,
         params.ref_index,
         regions_input
@@ -322,10 +286,8 @@ workflow {
                              }
                         .set {vep_input}
 
-            
-    vep_snvs_out = run_vep(vep_input, regions_input) // output: id, snv_vcf, snv_tbi
+    vep_snvs_out = run_vep(vep_input, regions_input)
 
-    // run pileup and split based on LR presence (tier1) / absence (tier2)
     tier_split_output = split_tier1_tier2(vep_snvs_out.join(truth_ch), input_bams, ref_input, regions_input, file(params.genome_chunks))
 
     phasing_output = phasing(tier_split_output, germline_calls_ch, input_bams, ref_input, vep_config, regions_input, sex_ch)

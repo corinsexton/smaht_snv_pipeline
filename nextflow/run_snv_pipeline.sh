@@ -1,7 +1,7 @@
 #!/bin/bash
 
 
-#SBATCH --job-name=SMHT004-3C_001_segdup
+#SBATCH --job-name=SMHT004-3A
 #SBATCH -A park
 #SBATCH --partition park,short
 #SBATCH --mem 5G
@@ -40,20 +40,20 @@
 #  --input_vcfs SMHT005-3C_vcfs_norufus.csv \
 #  --results_dir ./SMHT005-3C_test_results_noRUFUS/
 
-#nextflow run main.nf -resume \
-#  --vep_config vep.ini \
-#  --longread_csv Production_lr.csv \
-#  --ont_csv Production_ont.csv \
-#  --shortread_csv Production_sr.csv \
-#  --input_metadata Production_metadata.csv \
-#  --input_vcfs SMHT004-3A_vcfs.csv \
-#  --results_dir ./SMHT004-3A_test_results/
-
-nextflow run main.nf \
+nextflow run main.nf -resume \
   --vep_config vep.ini \
-  --longread_csv Production_p5_lr.csv \
-  --ont_csv Production_p5_ont.csv \
-  --shortread_csv Production_p5_sr.csv \
-  --input_metadata Production_p5_metadata.csv \
-  --input_vcfs SMHT004-3C_vcfs.csv \
-  --results_dir ./SMHT004-3C_test_results_segdup_1e-5
+  --longread_csv Production_lr.csv \
+  --ont_csv Production_ont.csv \
+  --shortread_csv Production_sr.csv \
+  --input_metadata Production_metadata.csv \
+  --input_vcfs SMHT004-3A_vcfs.csv \
+  --results_dir ./commit49821e4_SMHT004-3A_test_results/
+
+#nextflow run main.nf \
+#  --vep_config vep.ini \
+#  --longread_csv Production_p5_lr.csv \
+#  --ont_csv Production_p5_ont.csv \
+#  --shortread_csv Production_p5_sr.csv \
+#  --input_metadata Production_p5_metadata.csv \
+#  --input_vcfs SMHT004-3C_vcfs.csv \
+#  --results_dir ./SMHT004-3C_test_results_segdup_1e-5

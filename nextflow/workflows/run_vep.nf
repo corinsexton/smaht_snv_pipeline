@@ -9,6 +9,7 @@ nextflow.enable.dsl=2
 // module imports
 include { runVEP } from '../modules/run_vep.nf'
 include { filter_vep } from '../modules/filter_vep.nf'
+include { split_snvs_indels } from '../modules/split_snvs_indels.nf'
 
 // print usage
 if (params.help) {
@@ -52,7 +53,8 @@ workflow run_vep {
 
     runVEP(inputs,'mosaic')
     filter_vep(runVEP.out, 'mosaic')
+    split_snvs_indels(filter_vep.out.vcf,regions_input)
 
   emit:
-    filter_vep.out.vcf
+    split_snvs_indels.out.snvs
 }

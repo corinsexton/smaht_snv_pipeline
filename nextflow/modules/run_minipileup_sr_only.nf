@@ -5,7 +5,7 @@ process run_minipileup_sr_only {
     mode:'copy'
 
     publishDir "${params.results_dir}/13_final",
-    pattern: "${id}.final.vcf.gz*",
+    pattern: "${id}*.vcf.gz*",
     mode:'copy'
 
     publishDir "${params.results_dir}/13_final",
@@ -35,12 +35,13 @@ process run_minipileup_sr_only {
           path("${id}.final.vcf.gz"), path("${id}.final.vcf.gz.tbi"),
           path(truth_vcf), path(truth_vcf_tbi), emit: vcf
     path("${id}.minipileup_sr.vcf.gz")
+    path("${id}.CrossTissue.vcf.gz")
     path("${id}.final.metrics.tsv")
     path("${id}.final.regions.tsv")
 
     script:
     """
-    current_tissue=\$(echo "$id" | cut -d'-' -f2)
+    #current_tissue=\$(echo "$id" | cut -d'-' -f2)
 
     # Build: --sr-cram <bam1> --sr-cram <bam2> ...
     sr_crams=""
@@ -66,7 +67,7 @@ process run_minipileup_sr_only {
         \${sr_tissue}
 
     parse_minipileup_sr_only.py \
-        --tissue \${current_tissue} \
+        --tissue ${id} \
         --orig_vcf ${vcf} \
         --mp_vcf ${id}.minipileup_sr.vcf.gz \
         --out ${id}.CrossTissue.vcf.gz

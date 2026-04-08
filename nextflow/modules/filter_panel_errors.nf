@@ -35,10 +35,9 @@ process filter_poe {
     filter_by_poe.py --vcf ${vcf} \
                        --fasta ${error_panel_fa} \
                        --out ${id}.pon.filtered.vcf 
-    # optional params
-    #--threads 2 --failed-out failed.vcf
 
-    bcftools view -v snps -Oz ${id}.pon.filtered.vcf > ${id}.pon.filtered.vcf.gz
+    #bcftools view -v snps -Oz ${id}.pon.filtered.vcf > ${id}.pon.filtered.vcf.gz
+    bgzip ${id}.pon.filtered.vcf
     tabix ${id}.pon.filtered.vcf.gz
 
      # --- metrics (standard schema) ---

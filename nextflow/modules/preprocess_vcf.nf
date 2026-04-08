@@ -10,6 +10,10 @@ process preprocess_vcf {
     pattern: "${id}.preprocess.*.tsv",
     mode:'copy'
 
+    //publishDir "${params.results_dir}/1_pass_filtered",
+    //pattern: "${id}.${caller}*vcf.gz*",
+    //mode:'copy'
+
     input:
     tuple val(id), val(caller), path(vcf), path(tbi), path(ref), path(ref_index), path(truth_vcf), path(truth_tbi)
     tuple path(easy_regions), path(diff_regions), path(ext_regions),
@@ -19,6 +23,8 @@ process preprocess_vcf {
     tuple val(id), val(caller), path("${id}.${caller}.norm.PASS.atom.dedup.vcf.gz"), path("${id}.${caller}.norm.PASS.atom.dedup.vcf.gz.tbi"), path(truth_vcf), path(truth_tbi), emit: vcf
     path("${id}.${caller}.preprocess.metrics.tsv"), emit: metrics
     path("${id}.preprocess.regions.tsv"), emit: regions
+    path("${id}.${caller}.norm.PASS.atom.dedup.vcf.gz")
+    path("${id}.${caller}.norm.PASS.atom.dedup.vcf.gz.tbi")
 
 
     script:

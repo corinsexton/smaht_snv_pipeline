@@ -275,8 +275,15 @@ def germline_calls_ch = Channel
     .map{ row ->
         def id = row.id
         def germline_vcf = row.germline_calls
-        def germline_tbi = file(row.germline_calls + '.tbi')
-        tuple(id, germline_vcf, germline_tbi)
+        def tbi = file(row.germline_calls + '.tbi')
+        def csi = file(row.germline_calls + '.csi')
+
+        def germline_index =
+            tbi.exists() ? tbi :
+            csi.exists() ? csi :
+            null
+
+        tuple(id, germline_vcf, germline_index)
     }
 
 def sex_ch = Channel

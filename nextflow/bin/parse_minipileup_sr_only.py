@@ -284,7 +284,7 @@ for rec in orig:
             ref = sr_adf[0] + sr_adr[0]
             alt = sr_adf[1] + sr_adr[1]
             if ref + alt > 0:
-                rec.info["SR_VAF"] = float(alt / (ref + alt))
+                rec.info["SR_VAF"] = float(alt) / (ref + alt)
     except Exception:
         rec.info["SR_VAF"] = 0.0
         pass
@@ -309,7 +309,7 @@ for rec in orig:
             ref = lr_adf[0] + lr_adr[0]
             alt = lr_adf[1] + lr_adr[1]
             if ref + alt > 0:
-                rec.info["POOLED_PB_VAF"] = float(alt / (ref + alt))
+                rec.info["POOLED_PB_VAF"] = float(alt) / (ref + alt)
     except Exception:
         pass
 
@@ -323,7 +323,7 @@ for rec in orig:
             ref = ont_adf[0] + ont_adr[0]
             alt = ont_adf[1] + ont_adr[1]
             if ref + alt > 0:
-                rec.info["POOLED_ONT_VAF"] = float(alt / (ref + alt))
+                rec.info["POOLED_ONT_VAF"] = float(alt) / (ref + alt)
     except Exception:
         pass
 

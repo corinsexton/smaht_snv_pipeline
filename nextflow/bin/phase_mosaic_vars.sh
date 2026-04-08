@@ -172,6 +172,14 @@ echo "Running phasing_step2_phase_mosaic.py"
 echo "------------------------------------------------------------"
 
 # -b is a multi-arg, ie: -b bam1.bam  bam2.bam
+echo phasing_step2_phase_mosaic.py \
+    --workers "$THREADS" \
+    --tsv "$STEP4_TSV" \
+    --reference "$REFERENCE" \
+    -b "${PB_CRAMS[@]}" \
+    -s "$SEX" \
+    -i "$SAMPLE_ID"
+
 phasing_step2_phase_mosaic.py \
     --workers "$THREADS" \
     --tsv "$STEP4_TSV" \
@@ -179,6 +187,9 @@ phasing_step2_phase_mosaic.py \
     -b "${PB_CRAMS[@]}" \
     -s "$SEX" \
     -i "$SAMPLE_ID"
+
+
+
 
 [[ -f "$TAGS_TXT" ]] || { echo "Error: phasing tags not produced"; exit 1; }
 

@@ -146,23 +146,62 @@ run_region() {
   local outvcf="$WORKDIR/${safe}.group.vcf"
   : > "$outvcf"
 
-  for region in "${REG_ARR[@]}"; do
-    local rsafe="${region//:/_}"; rsafe="${rsafe//-/__}"
-    local BAMS=()
+  # Sort regions by chromosome then start position
+  mapfile -t SORTED_REGIONS < <(
+    for r in "${REG_ARR[@]}"; do echo "$r"; done \
+    | sort -t: -k1,1V -k2,2n
+  )
 
+  # flush_cluster: extract one BAM per CRAM for the cluster span, run minipileup
+  # per region using the shared BAMs, then clean up
+  flush_cluster() {
+    local -n _regions=$1
+    local span_chr=$2 span_min=$3 span_max=$4
+    [[ ${#_regions[@]} -eq 0 ]] && return
+
+    local span="${span_chr}:${span_min}-${span_max}"
+    local csafe="${span//:/_}"; csafe="${csafe//-/__}"
+
+    local CLUSTER_BAMS=()
     for cram in "${CRAMS[@]}"; do
-      local bam="$WORKDIR/$(basename "${cram%.*}")_${rsafe}.bam"
-      samtools view --reference "$REFERENCE_FASTA" --write-index -b -o "$bam" "$cram" "$region"
-      BAMS+=("$bam")
+      local bam="$WORKDIR/$(basename "${cram%.*}")_${csafe}.bam"
+      samtools view --reference "$REFERENCE_FASTA" --write-index -b -o "$bam" "$cram" "$span"
+      CLUSTER_BAMS+=("$bam")
     done
 
-    minipileup -f "$REFERENCE_FASTA" \
-       $MINPILEUP_ARGS \
-       -r "$region" \
-       "${BAMS[@]}" | grep -v '^#' >> "$outvcf" || true
+    for region in "${_regions[@]}"; do
+      minipileup -f "$REFERENCE_FASTA" \
+        $MINPILEUP_ARGS \
+        -r "$region" \
+        "${CLUSTER_BAMS[@]}" | grep -v '^#' >> "$outvcf" || true
+    done
 
-	for b in "${BAMS[@]}"; do rm -f "$b" "${b}.csi"; done
+    for b in "${CLUSTER_BAMS[@]}"; do rm -f "$b" "${b}.csi"; done
+    _regions=()
+  }
+
+  # Greedy proximity clustering: group regions within 1000bp of the cluster's current max end
+  declare -a CLUSTER_REGIONS=()
+  local cluster_chr="" cluster_min=0 cluster_max=0
+
+  for region in "${SORTED_REGIONS[@]}"; do
+    local chr="${region%%:*}"
+    local coords="${region#*:}"
+    local rstart="${coords%-*}"
+    local rend="${coords#*-}"
+
+    if [[ "$chr" == "$cluster_chr" && $(( rstart - cluster_max )) -le 10000 ]]; then
+      CLUSTER_REGIONS+=("$region")
+      (( rend > cluster_max )) && cluster_max=$rend
+    else
+      flush_cluster CLUSTER_REGIONS "$cluster_chr" "$cluster_min" "$cluster_max"
+      CLUSTER_REGIONS=("$region")
+      cluster_chr="$chr"
+      cluster_min=$rstart
+      cluster_max=$rend
+    fi
   done
+  flush_cluster CLUSTER_REGIONS "$cluster_chr" "$cluster_min" "$cluster_max"
 }
 
 export -f run_region

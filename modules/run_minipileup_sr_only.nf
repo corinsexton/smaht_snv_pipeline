@@ -1,9 +1,5 @@
 process run_minipileup_sr_only {
 
-    publishDir "${params.results_dir}/12_minipileup_sr",
-    pattern: "${id}.minipileup_sr.vcf.gz",
-    mode:'copy'
-
     publishDir "${params.results_dir}/13_final",
     pattern: "${id}.final.vcf.gz*",
     mode:'copy'
@@ -14,17 +10,16 @@ process run_minipileup_sr_only {
 
     cache false
 
-
-    cpus 4 
+    cpus 1
     memory '4G'
-    time '6h'
+    time '2h'
 
     tag "$id"
 
     input:
-    tuple val(id), path(vcf), path(tbi), 
+    tuple val(id), path(vcf), path(tbi),
         path(truth_vcf), path(truth_vcf_tbi),
-        path(sr_bams), path(sr_bais), val(sr_ids)
+        path(mp_vcf), path(mp_tbi)
     tuple path(ref), path(ref_index), path(ref_dict)
     tuple path(easy_regions), path(diff_regions), path(ext_regions),
         path(easy_regions_tbi), path(diff_regions_tbi), path(ext_regions_tbi)
@@ -34,7 +29,6 @@ process run_minipileup_sr_only {
     tuple val(id),
           path("${id}.final.vcf.gz"), path("${id}.final.vcf.gz.tbi"),
           path(truth_vcf), path(truth_vcf_tbi), emit: vcf
-    path("${id}.minipileup_sr.vcf.gz")
     path("${id}.final.metrics.tsv")
     path("${id}.final.regions.tsv")
 
@@ -42,33 +36,10 @@ process run_minipileup_sr_only {
     """
     current_tissue=\$(echo "$id" | cut -d'-' -f2)
 
-    # Build: --sr-cram <bam1> --sr-cram <bam2> ...
-    sr_crams=""
-    for f in ${sr_bams}; do
-        sr_crams+=" --sr-cram \${f}"
-    done
-
-    # Build: --sr-tissue <tissue id1> --sr-tissue <tissue id2> ...
-    sr_tissue=""
-    for f in ${sr_ids}; do
-        sr_tissue+=" --sr-tissue \${f}"
-    done
-
-    bcftools view -R ${easy_regions} -Oz -o ${id}.easyonly.vcf.gz ${vcf}
-    tabix ${id}.easyonly.vcf.gz
-
-    minipileup-parallel_sr_only.sh -i ${id}.easyonly.vcf.gz \
-        -r ${ref} \
-        -t ${task.cpus} \
-        --group 30 \
-        -o ${id}.minipileup_sr \
-        \${sr_crams} \
-        \${sr_tissue}
-
     parse_minipileup_sr_only.py \
         --tissue \${current_tissue} \
         --orig_vcf ${vcf} \
-        --mp_vcf ${id}.minipileup_sr.vcf.gz \
+        --mp_vcf ${mp_vcf} \
         --out ${id}.CrossTissue.vcf.gz
 
     tabix ${id}.CrossTissue.vcf.gz

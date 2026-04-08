@@ -29,8 +29,11 @@ process merge_minipileup_chunks {
 
     script:
     """
+    # Sort chunk files by name (chunk_001, chunk_002, ...) to ensure chromosome order
+    readarray -t sorted_chunks < <(printf '%s\n' ${mp_chunk_vcfs.join(' ')} | sort -V)
+
     bcftools concat -Oz -o ${id}.minipileup.merged.vcf.gz \\
-        ${mp_chunk_vcfs.join(' ')}
+        "\${sorted_chunks[@]}"
     bcftools index -t ${id}.minipileup.merged.vcf.gz
     """
 }

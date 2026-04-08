@@ -8,8 +8,8 @@ process run_phasing {
     pattern: "${id}.phased.vcf.gz*",
     mode:'copy'
 
-    cpus 8 
-    memory '24G'
+    cpus 20
+    memory '48G'
     time '6h'
 
     tag "$id"

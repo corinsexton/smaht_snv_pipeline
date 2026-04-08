@@ -234,53 +234,86 @@ run_region() {
     return 0 # avoid processing the body for the header run
   fi
 
-  # For the group body: loop regions; for each region build BAMs, run minipileup, append
+  # For the group body: sort regions, cluster nearby ones, share BAM extractions
   local group_vcf="${WORKDIR}/${safe}.group.vcf"
   : > "$group_vcf"
 
-  for region in "${REG_ARR[@]}"; do
-    local rsafe="${region//:/_}"; rsafe="${rsafe//-/__}"
+  # Sort regions by chromosome then start position
+  mapfile -t SORTED_REGIONS < <(
+    for r in "${REG_ARR[@]}"; do echo "$r"; done \
+    | sort -t: -k1,1V -k2,2n
+  )
 
-    # Extract region to BAM files
-    local BAMS=()
+  # flush_cluster: extract one BAM per CRAM for the cluster span, run minipileup
+  # per region in the cluster using the shared BAMs, then clean up
+  flush_cluster() {
+    local -n _regions=$1
+    local span_chr=$2 span_min=$3 span_max=$4
+    [[ ${#_regions[@]} -eq 0 ]] && return
+
+    local span="${span_chr}:${span_min}-${span_max}"
+    local csafe="${span//:/_}"; csafe="${csafe//-/__}"
+
+    # One BAM extraction per CRAM for the full cluster span
+    local CLUSTER_BAMS=()
     for cram in "${CRAMS[@]}"; do
-      local bam="${WORKDIR}/$(basename "${cram%.*}")_${rsafe}.bam"
-      samtools view --reference "$REFERENCE_FASTA" --write-index -b -o "$bam" "$cram" "$region"
-      BAMS+=("$bam")
+      local bam="${WORKDIR}/$(basename "${cram%.*}")_${csafe}.bam"
+      samtools view --reference "$REFERENCE_FASTA" --write-index -b -o "$bam" "$cram" "$span"
+      CLUSTER_BAMS+=("$bam")
     done
 
-    # Run minipileup for this region (avoid piping so segfault can't break the shell pipeline)
-    tmp_out="${WORKDIR}/minipileup_${rsafe}.$$.$RANDOM.out"
+    # Run minipileup once per region in the cluster, reusing the shared BAMs
+    for region in "${_regions[@]}"; do
+      local rsafe="${region//:/_}"; rsafe="${rsafe//-/__}"
+      local tmp_out="${WORKDIR}/minipileup_${rsafe}.$$.$RANDOM.out"
 
-    minipileup -f "$REFERENCE_FASTA" \
-      $MINPILEUP_ARGS \
-      -r "$region" \
-      "${BAMS[@]}" > "$tmp_out"
-    mp_status=$?
+      minipileup -f "$REFERENCE_FASTA" \
+        $MINPILEUP_ARGS \
+        -r "$region" \
+        "${CLUSTER_BAMS[@]}" > "$tmp_out"
+      local mp_status=$?
 
-    if [[ $mp_status -eq 139 ]]; then
-      echo "Seg fault at $region" >&2
-      rm -f "$tmp_out"
-      for b in "${BAMS[@]}"; do rm -f "$b" "${b}.csi"; done
-      continue
-    elif [[ $mp_status -ne 0 ]]; then
-      # keep prior behavior: don't kill the overall job on other minipileup failures
-      rm -f "$tmp_out"
-      true
+      if [[ $mp_status -eq 139 ]]; then
+        echo "Seg fault at $region" >&2
+        rm -f "$tmp_out"
+      elif [[ $mp_status -ne 0 ]]; then
+        rm -f "$tmp_out"
+      else
+        grep -v '^#' "$tmp_out" >> "$group_vcf" || true
+        rm -f "$tmp_out"
+      fi
+    done
+
+    # Cleanup cluster BAMs
+    for b in "${CLUSTER_BAMS[@]}"; do rm -f "$b" "${b}.csi"; done
+    _regions=()
+  }
+
+  # Greedy proximity clustering: group regions within 150bp of the cluster's current max end
+  declare -a CLUSTER_REGIONS=()
+  local cluster_chr="" cluster_min=0 cluster_max=0
+
+  for region in "${SORTED_REGIONS[@]}"; do
+    local chr="${region%%:*}"
+    local coords="${region#*:}"
+    local rstart="${coords%-*}"
+    local rend="${coords#*-}"
+
+    if [[ "$chr" == "$cluster_chr" && $(( rstart - cluster_max )) -le 10000 ]]; then
+      # Extend current cluster
+      CLUSTER_REGIONS+=("$region")
+      (( rend > cluster_max )) && cluster_max=$rend
     else
-      grep -v '^#' "$tmp_out" >> "$group_vcf" || true
-      rm -f "$tmp_out"
+      # Flush current cluster and start a new one
+      flush_cluster CLUSTER_REGIONS "$cluster_chr" "$cluster_min" "$cluster_max"
+      CLUSTER_REGIONS=("$region")
+      cluster_chr="$chr"
+      cluster_min=$rstart
+      cluster_max=$rend
     fi
-
-    ## Run minipileup for this region
-    #minipileup -f "$REFERENCE_FASTA" \
-    #  $MINPILEUP_ARGS \
-    #  -r "$region" \
-    #  "${BAMS[@]}" | grep -v '^#' >> "$group_vcf" || true
-
-    # Cleanup per-region BAMs
-    for b in "${BAMS[@]}"; do rm -f "$b" "${b}.csi"; done
   done
+  # Flush the final cluster
+  flush_cluster CLUSTER_REGIONS "$cluster_chr" "$cluster_min" "$cluster_max"
 }
 
 # Make the function available to xargs bash -c

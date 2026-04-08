@@ -275,8 +275,9 @@ def germline_calls_ch = Channel
     .splitCsv(header: true)
     .map{ row ->
         def id = row.id
-        def germline_vcf = row.germline_calls
-        def germline_tbi = file(row.germline_calls + '.tbi')
+        def germline_vcf = file(row.germline_calls)
+        def tbi_path = file(row.germline_calls + '.tbi')
+        def germline_tbi = tbi_path.exists() ? tbi_path : file(row.germline_calls + '.csi')
         tuple(id, germline_vcf, germline_tbi)
     }
 
@@ -329,7 +330,7 @@ workflow {
 
     phasing_output = phasing(tier_split_output, germline_calls_ch, input_bams, ref_input, vep_config, regions_input, sex_ch)
 
-    check_other_tissues(phasing_output, ref_input, sr_by_donor, regions_input)
+    check_other_tissues(phasing_output, ref_input, sr_by_donor, regions_input, file(params.genome_chunks))
 
 }
 

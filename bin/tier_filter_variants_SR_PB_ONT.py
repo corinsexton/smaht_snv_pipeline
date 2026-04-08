@@ -339,10 +339,10 @@ class TieredVCF:
         self.min_alt_binom = min_alt_binom
         self.snvs = original_vcf.snvs  # (chrom, pos, ref, alt) -> pysam.VariantRecord
         self.tiers = dict()  # (chrom, pos, ref, alt) -> tier
+        self.alt_supports = dict()  # (chrom, pos, ref, alt) -> ALT_SUPPORT string
         self.tests = dict()  # (chrom, pos, ref, alt) -> {fisher: FisherTestResult, binomial: BinomialTestResult}
         self.sr_cutoffs = None
         self.pb_cutoffs = None
-        self.alt_support_pass = None
         # Only store TIER1 and TIER2 variants, others are not in dict
         self.definitions = [
             # CrossTech classification
@@ -403,17 +403,17 @@ class TieredVCF:
             # Tier classification
             if SR_ALT_TOTAL >= thresholds["combined_SR"] and PB_ALT_TOTAL >= thresholds["combined_PB"]:
                 self.tiers[key] = "TIER1"
-                self.alt_support_pass = 'PASS_SR_PB'
+                self.alt_supports[key] = 'PASS_SR_PB'
                 self.sr_cutoffs = thresholds["combined_SR"]
                 self.pb_cutoffs = thresholds["combined_PB"]
             elif SR_ALT_TOTAL >= thresholds["SR"]:
                 self.tiers[key] = "TIER2"
-                self.alt_support_pass = 'PASS_SR'
+                self.alt_supports[key] = 'PASS_SR'
                 self.sr_cutoffs = thresholds["combined_SR"]
             else:
-                self.alt_support_pass = 'FAIL'
+                self.alt_supports[key] = 'FAIL'
         else:
-            self.alt_support_pass = 'FAIL_NO_SR'
+            self.alt_supports[key] = 'FAIL_NO_SR'
 
     def fisher_strand_bias(self, key: tuple):
         """Compute Fisher's exact test p-value for strand bias.
@@ -645,7 +645,7 @@ class TieredVCF:
 
                     if self.sr_cutoffs is not None:
                         record.info["SR_READ_CUTOFF"] = self.sr_cutoffs
-                    record.info["ALT_SUPPORT"] = self.alt_support_pass
+                    record.info["ALT_SUPPORT"] = self.alt_supports.get(key, 'FAIL')
                     # Write record
                     vf_out.write(record)
                     written += 1

@@ -59,10 +59,16 @@ process run_minipileup_parallel {
 
     chr=\$( basename -s .vcf.gz ${vcf})
 
+    if [[ "\${chr}" == "chunk_041" ]]; then
+        group_size=20
+    else
+        group_size=100
+    fi
+
     minipileup-parallel.sh -i ${vcf} \
         -r ${ref} \
         -t ${task.cpus} \
-        --group 10 \
+        --group \${group_size} \
         -o ${id}.\${chr}.minipileup \
         \${sr_crams} \
         \${pb_crams} \

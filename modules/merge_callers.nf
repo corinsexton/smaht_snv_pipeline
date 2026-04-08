@@ -4,7 +4,7 @@
 
 process merge_callers {
     cpus 1
-    memory '16G'
+    memory '32G'
     time '30m'
 
     publishDir "${params.results_dir}/2_merged_vcf",

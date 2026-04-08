@@ -37,9 +37,8 @@ process filter_poe {
     filter_by_poe.py --vcf ${vcf} \
                        --fasta ${error_panel_fa} \
                        --out ${id}.pon.filtered.vcf \
-                       --failed-out ${id}.pon.failed.vcf
-    # optional params
-    #--threads 2 --failed-out failed.vcf
+                       --failed-out ${id}.pon.failed.vcf \
+                       --threads 1
 
     bcftools view -v snps -Oz ${id}.pon.filtered.vcf > ${id}.pon.filtered.vcf.gz
     tabix ${id}.pon.filtered.vcf.gz

@@ -55,7 +55,7 @@ workflow split_tier1_tier2 {
     
     // Step 4: Group all chunk outputs per id 
     run_minipileup_parallel.out.vcf 
-        .groupTuple(size:156)
+        .groupTuple(size:52)
         .map { id, chunk_vcfs, chunk_tbis, truth_vcfs, truth_tbis, mp_vcfs, mp_tbis -> 
                 tuple( id, mp_vcfs, mp_tbis, truth_vcfs.unique(), truth_tbis.unique() ) } 
         .set { chunk_groups } 

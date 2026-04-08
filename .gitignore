@@ -10,11 +10,20 @@ results*/
 Production_*.csv
 p25_*.csv
 p25_ss/
+p25_samplesheets_merged
 p25_samplesheets_merged/
 
 # SLURM output logs
 slurm-*.out
 
+# Nextflow rotated logs
+.nextflow.log.*
+
+# Result directories
+all_filter_results*/
+
 # Miscellaneous
 z
 zz
+zzz
+test.bam

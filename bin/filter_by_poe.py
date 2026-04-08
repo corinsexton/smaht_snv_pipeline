@@ -123,8 +123,8 @@ def main():
     ap.add_argument("--fasta", required=True, help="PON FASTA (needs .fai; .gzi if bgz)")
     ap.add_argument("--out", required=True, help="Output VCF of ALL variants, annotated (.vcf or .vcf.gz)")
     ap.add_argument("--failed-out", default=None, help="Optional VCF path to also write FAIL variants (annotated).")
-    ap.add_argument("--threads", type=int, default=max(os.cpu_count() or 1, 1),
-                    help="Worker threads for FASTA lookups (default: CPU count)")
+    ap.add_argument("--threads", type=int, default=1,
+                    help="Worker threads for FASTA lookups (default: 1)")
     ap.add_argument("--chr-regex", default=r"^chr([0-9]+|[XY])\b",
                     help="Regex contigs must match to be checked. Set '' to check all.")
     args = ap.parse_args()

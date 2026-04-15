@@ -12,7 +12,6 @@ include { check_other_tissues } from './workflows/check_other_tissues.nf'
 
 params.genome_chunks   = "${projectDir}/conf/genome_chunks.txt"
 params.panel_of_errors ="/n/data1/hms/dbmi/park/corinne/smaht/test_benchmarking/smaht_snv_pipeline/panel_of_errors/PON.q20q20.05.5.fa.gz"
-params.panel_of_errors_index  = "/n/data1/hms/dbmi/park/corinne/smaht/test_benchmarking/smaht_snv_pipeline/panel_of_errors/PON.q20q20.05.5.fa.gz.fai"
 params.results_dir     = "./new_results"
 params.ref             = "/n/data1/hms/dbmi/park-smaht_dac/ref/GRCh38_no_alt/hg38_no_alt.fa"
 params.ref_index             = "/n/data1/hms/dbmi/park-smaht_dac/ref/GRCh38_no_alt/hg38_no_alt.fa.fai"
@@ -62,7 +61,7 @@ def ref_input = tuple(ref_fa, ref_fai, ref_dict)
 
 
 // ---------- helper to parse CRAM samplesheet ----------
-// New format: tissue,core,cram,crai (header-based, one row per CRAM file)
+// SR/LR format: tissue,core,cram,crai (header-based, one row per CRAM file)
 def parse_cram_csv(csv_path) {
     Channel
         .fromPath(csv_path)
@@ -77,9 +76,23 @@ def parse_cram_csv(csv_path) {
         }
 }
 
+// ONT format: tissue,cram,crai (no core — ONT is always used pooled per donor)
+def parse_pooled_cram_csv(csv_path) {
+    Channel
+        .fromPath(csv_path)
+        .splitCsv(header: true)
+        .map { row ->
+            tuple(
+                row.tissue.trim(),
+                file(row.cram.trim()),
+                file(row.crai.trim())
+            )
+        }
+}
+
 def input_sr  = parse_cram_csv(params.shortread_csv)
-def input_lr  = params.longread_csv ? parse_cram_csv(params.longread_csv)  : Channel.empty()
-def input_ont = params.ont_csv      ? parse_cram_csv(params.ont_csv)       : Channel.empty()
+def input_lr  = params.longread_csv ? parse_cram_csv(params.longread_csv)        : Channel.empty()
+def input_ont = params.ont_csv      ? parse_pooled_cram_csv(params.ont_csv)      : Channel.empty()
 
 // ---------- SR: tissue-level pool (all cores pooled, for minipileup) ----------
 input_sr
@@ -135,7 +148,7 @@ sr_ids_by_donor
 
 // ---------- ONT: donor-level aggregate (optional; map lookup handles missing donors) ----------
 input_ont
-    .map { tissue, core, cram, crai ->
+    .map { tissue, cram, crai ->
         def donor = tissue.tokenize('-')[0]
         tuple(donor, tissue, cram, crai)
     }
@@ -189,11 +202,7 @@ def cram_map_lr = params.longread_csv ? input_lr
         [“${tissue}.core_cram_map.tsv”, “${core}\t${basename}\tPB\n”]
     } : Channel.empty()
 
-def cram_map_ont = params.ont_csv ? input_ont
-    .map { tissue, core, cram, crai ->
-        def basename = cram.name.replaceAll(/\.(cram|bam)$/, '')
-        [“${tissue}.core_cram_map.tsv”, “${core}\t${basename}\tONT\n”]
-    } : Channel.empty()
+// ONT has no core — not added to core_cram_map (pooled annotation only)
 
 // ---------- Auto-expand merged cores (e.g., 001C1-001A3) ----------
 // Merged cores are identified by a dash in the core name in the VCF samplesheet.
@@ -234,15 +243,8 @@ def cram_map_lr_merged = params.longread_csv ? mergedCoreExpansions()
         [“${key[0]}.core_cram_map.tsv”, “${merged_core}\t${basename}\tPB\n”]
     } : Channel.empty()
 
-def cram_map_ont_merged = params.ont_csv ? mergedCoreExpansions()
-    .join(input_ont.map { tissue, core, cram, crai -> tuple([tissue, core], cram) })
-    .map { key, merged_core, cram ->
-        def basename = cram.name.replaceAll(/\.(cram|bam)$/, '')
-        [“${key[0]}.core_cram_map.tsv”, “${merged_core}\t${basename}\tONT\n”]
-    } : Channel.empty()
-
-cram_map_sr.mix(cram_map_lr).mix(cram_map_ont)
-    .mix(cram_map_sr_merged).mix(cram_map_lr_merged).mix(cram_map_ont_merged)
+cram_map_sr.mix(cram_map_lr)
+    .mix(cram_map_sr_merged).mix(cram_map_lr_merged)
     .collectFile { item -> item }
     .map { f ->
         def tissue = f.name.replace('.core_cram_map.tsv', '')

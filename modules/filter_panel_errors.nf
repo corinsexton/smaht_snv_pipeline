@@ -18,7 +18,7 @@ process filter_poe {
 
     input:
     tuple val(id), path(vcf), path(tbi), path(truth_vcf), path(truth_tbi)
-    tuple path(error_panel_fa),path(error_panel_fai)   // input index for panel
+    path(error_panel_fa)
     tuple path(easy_regions), path(diff_regions), path(ext_regions),
         path(easy_regions_tbi), path(diff_regions_tbi), path(ext_regions_tbi)
 
@@ -32,9 +32,11 @@ process filter_poe {
 
     script:
     """
+    samtools faidx ${error_panel_fa}
+
     filter_by_poe.py --vcf ${vcf} \
                        --fasta ${error_panel_fa} \
-                       --out ${id}.pon.filtered.vcf 
+                       --out ${id}.pon.filtered.vcf
     # optional params
     #--threads 2 --failed-out failed.vcf
 

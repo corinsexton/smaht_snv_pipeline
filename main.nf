@@ -12,7 +12,6 @@ include { check_other_tissues } from './workflows/check_other_tissues.nf'
 
 params.genome_chunks   = "${projectDir}/conf/genome_chunks.txt"
 params.panel_of_errors ="/n/data1/hms/dbmi/park/corinne/smaht/test_benchmarking/smaht_snv_pipeline/panel_of_errors/PON.q20q20.05.5.fa.gz"
-params.panel_of_errors_index  = "/n/data1/hms/dbmi/park/corinne/smaht/test_benchmarking/smaht_snv_pipeline/panel_of_errors/PON.q20q20.05.5.fa.gz.fai"
 params.results_dir     = "./new_results"
 params.ref             = "/n/data1/hms/dbmi/park-smaht_dac/ref/GRCh38_no_alt/hg38_no_alt.fa"
 params.ref_index             = "/n/data1/hms/dbmi/park-smaht_dac/ref/GRCh38_no_alt/hg38_no_alt.fa.fai"
@@ -48,9 +47,7 @@ def ensureTabixIndex(vcf_path) {
     return tbi_path
 }
 
-def poe_fa = file(params.panel_of_errors)
-def poe_fai = file(params.panel_of_errors_index)
-def poe_input = tuple(poe_fa, poe_fai)
+def poe_input = file(params.panel_of_errors)
 
 def regions_input = tuple(file(params.easy_regions),file(params.diff_regions),file(params.ext_regions),
                           file(params.easy_regions + ".tbi"),file(params.diff_regions + ".tbi"),file(params.ext_regions + ".tbi"))

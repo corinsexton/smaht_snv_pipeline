@@ -169,10 +169,13 @@ run_region() {
       CLUSTER_BAMS+=("$bam")
     done
 
-    for region in "${_regions[@]}"; do
+    # NOTE: use _r not 'region' — bash for-loop vars are not local; 'region' is
+    # the outer run_region loop variable and would be clobbered here, causing
+    # CLUSTER_REGIONS=("$region") after flush to use the wrong (last old) region.
+    for _r in "${_regions[@]}"; do
       minipileup -f "$REFERENCE_FASTA" \
         $MINPILEUP_ARGS \
-        -r "$region" \
+        -r "$_r" \
         "${CLUSTER_BAMS[@]}" | grep -v '^#' >> "$outvcf" || true
     done
 
@@ -180,17 +183,28 @@ run_region() {
     _regions=()
   }
 
-  # Greedy proximity clustering: group regions within 1000bp of the cluster's current max end
-  declare -a CLUSTER_REGIONS=()
-  local cluster_chr="" cluster_min=0 cluster_max=0
+  # Greedy proximity clustering: group regions within 10000bp of the cluster's current max end
+  # NOTE: use local -a (not declare -a) so that local -n nameref in flush_cluster resolves correctly;
+  # pre-seed with the first region and loop from index 1 to avoid the sentinel-value pattern
+  # (cluster_chr="") that caused the first region to be skipped when nameref resolution of the
+  # empty-array guard misfired on certain bash versions.
+  local first_r="${SORTED_REGIONS[0]}"
+  local cluster_chr="${first_r%%:*}"
+  local first_coords="${first_r#*:}"
+  local cluster_min="${first_coords%-*}"
+  local cluster_max="${first_coords#*-}"
+  local -a CLUSTER_REGIONS=("$first_r")
 
-  for region in "${SORTED_REGIONS[@]}"; do
+  for region in "${SORTED_REGIONS[@]:1}"; do
     local chr="${region%%:*}"
     local coords="${region#*:}"
     local rstart="${coords%-*}"
     local rend="${coords#*-}"
 
-    if [[ "$chr" == "$cluster_chr" && $(( rstart - cluster_max )) -le 10000 ]]; then
+    # Guard "$rstart" -ge "$cluster_min": prevents a region that sorts before cluster_min
+    # (possible when a large spanning indel and a SNV share the same start position and the
+    # sort is unstable) from being incorrectly added to the current cluster after a flush.
+    if [[ "$chr" == "$cluster_chr" && $(( rstart - cluster_max )) -le 10000 && "$rstart" -ge "$cluster_min" ]]; then
       CLUSTER_REGIONS+=("$region")
       (( rend > cluster_max )) && cluster_max=$rend
     else

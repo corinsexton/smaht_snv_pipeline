@@ -1,23 +1,23 @@
 #!/bin/bash
 
 
-#SBATCH --job-name=nf_big_vcf_test
+#SBATCH --job-name=nf_p25_big_vcf
 #SBATCH -A park_contrib
 #SBATCH --partition park
 #SBATCH --mem 8G
 #SBATCH -c 1
-#SBATCH -t 1-00:00:00
+#SBATCH -t 7-00:00:00
 #SBATCH -o slurm-%x.%j.out
 ##SBATCH --dependency=afterany:25861666
 
 nextflow run main.nf -resume \
   --vep_config vep.ini \
-  --longread_csv p25_lr_FIX.csv \
-  --ont_csv p25_samplesheets_merged/p25_ont.csv \
-  --shortread_csv p25_samplesheets_merged/p25_sr.csv \
-  --input_metadata p25_samplesheets_merged/p25_metadata.csv \
-  --input_vcfs p25_vcfs_ss.csv \
-  --results_dir results_test
+  --longread_csv samplesheets/p25/p25_lr.csv \
+  --ont_csv samplesheets/p25/p25_ont.csv \
+  --shortread_csv samplesheets/p25/p25_sr.csv \
+  --input_metadata samplesheets/p25/p25_metadata.csv \
+  --input_vcfs samplesheets/p25/p25_vcfs.csv \
+  --results_dir results_p25_big_vcf/
 
 
   #--input_vcfs p25_samplesheets_merged/p25_vcfs.csv \

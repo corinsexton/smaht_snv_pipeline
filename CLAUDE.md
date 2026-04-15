@@ -68,6 +68,7 @@ The pipeline is structured into three layers:
 - `phasing_step2_phase_mosaic.py` — Binomial phasing against germline haplotypes
 - `set_filter_vcf.py` — Set final FILTER field
 - `bcftools_PASS_norm_dedup.sh` — Normalize, PASS-filter, deduplicate
+- `minipileup-parallel.sh` — Parallel minipileup runner; groups VCF intervals into batches of `--group` size, runs one BAM extraction + minipileup call per region per batch; uses `--sr-cram` for short-read and `--lr-cram/--lr-tissue/--lr-type PB|ONT` (triplet, repeatable) for long-read inputs
 
 ## Data Flow
 

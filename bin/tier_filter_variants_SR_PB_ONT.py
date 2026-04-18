@@ -726,9 +726,9 @@ class TieredVCF:
 
                         if called:
                             has_pileup_support = (sr.ALT_ADF + sr.ALT_ADR + pb.ALT_ADF + pb.ALT_ADR) > 0
-                            gt = '0/1' if has_pileup_support else '0/0'
+                            gt = (0, 1) if has_pileup_support else (0, 0)
                         else:
-                            gt = './.'
+                            gt = (None, None)
                         new_rec.samples[core]['GT'] = gt
 
                         new_rec.samples[core]['SR_ADF'] = (sr.REF_ADF, sr.ALT_ADF)

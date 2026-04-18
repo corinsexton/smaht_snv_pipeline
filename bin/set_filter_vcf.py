@@ -26,7 +26,13 @@ def clone_record(rec, out_header):
         try:
             new_rec.info[key] = val
         except Exception:
-            pass  # field not defined in output header — skip
+            # pysam reads Number=1 String fields containing commas as a tuple;
+            # rejoin with commas to reconstruct the original string and retry.
+            if isinstance(val, tuple):
+                try:
+                    new_rec.info[key] = ','.join(str(v) for v in val)
+                except Exception:
+                    pass
 
     # Copy FORMAT/sample fields for every sample, field by field so one
     # problematic field doesn't silently drop all FORMAT data for a sample

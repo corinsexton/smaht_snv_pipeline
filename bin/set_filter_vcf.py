@@ -28,12 +28,14 @@ def clone_record(rec, out_header):
         except Exception:
             pass  # field not defined in output header — skip
 
-    # Copy FORMAT/sample fields for every sample
+    # Copy FORMAT/sample fields for every sample, field by field so one
+    # problematic field doesn't silently drop all FORMAT data for a sample
     for sample in rec.samples:
-        try:
-            new_rec.samples[sample].update(rec.samples[sample].items())
-        except Exception:
-            pass
+        for key, val in rec.samples[sample].items():
+            try:
+                new_rec.samples[sample][key] = val
+            except Exception:
+                pass
 
     return new_rec
 

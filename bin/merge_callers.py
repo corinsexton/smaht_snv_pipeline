@@ -304,7 +304,7 @@ def main(args):
     saw_MT = False
     saw_M = False
 
-    for handler in caller_handlers:
+    for _, handler in caller_handlers:
         for header_line in handler.HEADER.definitions.splitlines():
             if header_line.startswith("##contig="):
                 contig_id, length = parse_contig(header_line)

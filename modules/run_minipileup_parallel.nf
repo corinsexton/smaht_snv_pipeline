@@ -2,9 +2,9 @@ process run_minipileup_parallel {
 
     cache 'lenient'
 
-    cpus 10
+    cpus 15
     memory '4G'
-    time '2h'
+    time '1h'
 
     tag "$id"
 
@@ -31,44 +31,56 @@ process run_minipileup_parallel {
         sr_crams+=" --sr-cram \${f}"
     done
 
-    # Build: --pb-cram <bam1> --pb-cram <bam2> ...
-    pb_crams=""
+    # Build PB long-read arrays for paired --lr-cram/--lr-tissue/--lr-type args
+    pb_cram_arr=()
     for f in ${lr_bams}; do
-        pb_crams+=" --pb-cram \${f}"
-    done
-
-    # Build: --ont-cram <bam1> --ont-cram <bam2> ...
-    ont_crams=""
-    for f in ${lr_ont_bams}; do
-        ont_crams+=" --ont-cram \${f}"
+        pb_cram_arr+=("\${f}")
     done
 
     lr_tissues_clean=\$(printf '%s\n' "${lr_tissues}" | tr -d '[],')
-    # Build: --pb-tissue <tissue1> --pb-tissue <tissue2> ...
-    pb_tissues=""
+    pb_tissue_arr=()
     for f in \${lr_tissues_clean}; do
-        pb_tissues+=" --pb-tissue \${f}"
+        pb_tissue_arr+=("\${f}")
+    done
+
+    pb_lr_args=""
+    for i in "\${!pb_cram_arr[@]}"; do
+        pb_lr_args+=" --lr-cram \${pb_cram_arr[\${i}]} --lr-tissue \${pb_tissue_arr[\${i}]} --lr-type PB"
+    done
+
+    # Build ONT long-read arrays for paired --lr-cram/--lr-tissue/--lr-type args
+    ont_cram_arr=()
+    for f in ${lr_ont_bams}; do
+        ont_cram_arr+=("\${f}")
     done
 
     ont_tissues_clean=\$(printf '%s\n' "${lr_ont_tissues}" | tr -d '[],')
-    # Build: --ont-tissue <tissue1> --ont-tissue <tissue2> ...
-    ont_tissues=""
+    ont_tissue_arr=()
     for f in \${ont_tissues_clean}; do
-        ont_tissues+=" --ont-tissue \${f}"
+        ont_tissue_arr+=("\${f}")
+    done
+
+    ont_lr_args=""
+    for i in "\${!ont_cram_arr[@]}"; do
+        ont_lr_args+=" --lr-cram \${ont_cram_arr[\${i}]} --lr-tissue \${ont_tissue_arr[\${i}]} --lr-type ONT"
     done
 
     chr=\$( basename -s .vcf.gz ${vcf})
 
+    if [[ "\${chr}" == "chunk_041" ]]; then
+        group_size=20
+    else
+        group_size=100
+    fi
+
     minipileup-parallel.sh -i ${vcf} \
         -r ${ref} \
         -t ${task.cpus} \
-        --group 50 \
+        --group \${group_size} \
         -o ${id}.\${chr}.minipileup \
         \${sr_crams} \
-        \${pb_crams} \
-        \${ont_crams} \
-        \${pb_tissues} \
-        \${ont_tissues}
+        \${pb_lr_args} \
+        \${ont_lr_args}
 
     """
 }

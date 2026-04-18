@@ -25,24 +25,23 @@ workflow preprocess_merge_callers {
         // Step 1: Normalize, filter PASS, atomize
         // Assumes: preprocess_vcf emits (id, processed_vcf, processed_vcf.tbi)
         preprocess_input = vcf_inputs
-            .map { id, caller, vcf, tbi, truth, truth_tbi ->
-                tuple(id, caller, vcf, tbi, ref, ref_index, truth, truth_tbi)
+            .map { id, core, gcc, caller, vcf, tbi, truth, truth_tbi ->
+                tuple(id, core, caller, vcf, tbi, ref, ref_index, truth, truth_tbi)
             }
-        preprocess_vcf(preprocess_input,regions_input)
+        preprocess_vcf(preprocess_input, regions_input)
 
-        // preprocess_vcf.out should look like:
-        // tuple(id, caller_name, processed_vcf, processed_tbi, truth_vcf, truth_tbi)
-
-        //preprocess_vcf.out.vcf.view()
         // ---- Step 2: group processed VCFs by sample ID ----
         grouped = preprocess_vcf.out.vcf
                    .groupTuple(by: 0)
-                   .map { id, callers, vcfs, tbis, truth_vcfs, truth_tbis ->
+                   .map { id, cores, callers, vcfs, tbis, truth_vcfs, truth_tbis ->
+                    def entries = [cores, callers, vcfs, tbis].transpose()
+                                    .unique { a -> "${a[0]}__${a[1]}" }
+                                    .sort   { a, b -> "${a[0]}__${a[1]}" <=> "${b[0]}__${b[1]}" }
                     tuple(
                         id,
-                        callers.unique(),
-                        vcfs.unique(),
-                        tbis.unique(),
+                        entries.collect { c, cal, v, t -> "${c}__${cal}" },
+                        entries.collect { c, cal, v, t -> v },
+                        entries.collect { c, cal, v, t -> t },
                         truth_vcfs.unique(),
                         truth_tbis.unique()
                     )

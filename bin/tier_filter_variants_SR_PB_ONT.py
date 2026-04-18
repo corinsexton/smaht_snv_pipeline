@@ -327,25 +327,25 @@ class MinipileupVCF:
 
     def compute_core_counts(self, core_cram_map: dict):
         """
-        Compute per-core counts for SR, tissue-matched PB, and tissue-matched ONT.
+        Compute per-core counts for SR and tissue-matched PB.
+        ONT is pooled-only and not tracked per core.
 
         core_cram_map: OrderedDict {core: [(cram_basename, type), ...]}
+          type is SR or PB; ONT entries (if any) are ignored.
 
         Sets self.core_counts:
-            {key: {core: {SR: SampleCounts, PB: SampleCounts, ONT: SampleCounts}}}
+            {key: {core: {SR: SampleCounts, PB: SampleCounts}}}
 
         Sample naming convention (set by minipileup-parallel.sh):
-          SR  → {cram_basename}-SR
-          PB  → {cram_basename}-PB-{tissue}   (tissue-matched)
-          ONT → {cram_basename}-ONT-{tissue}  (tissue-matched)
+          SR → {cram_basename}-SR
+          PB → {cram_basename}-PB-{tissue}  (tissue-matched)
         """
         for key, counts_ in self.counts.items():
             self.core_counts[key] = {}
             for core, cram_list in core_cram_map.items():
                 core_agg = {
-                    'SR':  SampleCounts(core + '-SR'),
-                    'PB':  SampleCounts(core + '-PB'),
-                    'ONT': SampleCounts(core + '-ONT'),
+                    'SR': SampleCounts(core + '-SR'),
+                    'PB': SampleCounts(core + '-PB'),
                 }
                 for basename, ctype in cram_list:
                     if ctype == 'SR':
@@ -354,11 +354,8 @@ class MinipileupVCF:
                     elif ctype == 'PB':
                         target = f"{basename}-PB-{self.current_tissue}" if self.current_tissue else f"{basename}-PB"
                         grp = 'PB'
-                    elif ctype == 'ONT':
-                        target = f"{basename}-ONT-{self.current_tissue}" if self.current_tissue else f"{basename}-ONT"
-                        grp = 'ONT'
                     else:
-                        continue
+                        continue  # ONT and unknown types are not per-core
                     sc = counts_.get(target)
                     if sc is not None:
                         core_agg[grp].REF_ADF += sc.REF_ADF
@@ -579,16 +576,13 @@ class TieredVCF:
 
         # FORMAT field definitions (per-core)
         format_defs = [
-            '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype: 0/1=called+passed, ./.=not called by any caller in this core">',
+            '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype: 0/1=called+pileup-supported, 0/0=called+no-pileup-support, ./.=not called by any caller in this core">',
             '##FORMAT=<ID=SR_ADF,Number=2,Type=Integer,Description="Per-core short-read forward depths (REF,ALT)">',
             '##FORMAT=<ID=SR_ADR,Number=2,Type=Integer,Description="Per-core short-read reverse depths (REF,ALT)">',
             '##FORMAT=<ID=PB_ADF,Number=2,Type=Integer,Description="Per-core tissue-matched PacBio forward depths (REF,ALT)">',
             '##FORMAT=<ID=PB_ADR,Number=2,Type=Integer,Description="Per-core tissue-matched PacBio reverse depths (REF,ALT)">',
-            '##FORMAT=<ID=ONT_ADF,Number=2,Type=Integer,Description="Per-core tissue-matched ONT forward depths (REF,ALT)">',
-            '##FORMAT=<ID=ONT_ADR,Number=2,Type=Integer,Description="Per-core tissue-matched ONT reverse depths (REF,ALT)">',
             '##FORMAT=<ID=SR_VAF,Number=1,Type=Float,Description="Per-core short-read variant allele fraction">',
             '##FORMAT=<ID=PB_VAF,Number=1,Type=Float,Description="Per-core tissue-matched PacBio variant allele fraction">',
-            '##FORMAT=<ID=ONT_VAF,Number=1,Type=Float,Description="Per-core tissue-matched ONT variant allele fraction">',
             '##FORMAT=<ID=TIER,Number=1,Type=String,Description="Tier classification: TIER1=LR-supported, TIER2=SR-only (tissue-level)">',
             '##FORMAT=<ID=SB_PVAL,Number=1,Type=Float,Description="Fisher exact test p-value for strand balance (tissue-level)">',
             '##FORMAT=<ID=SB_SRC,Number=1,Type=String,Description="Platform used for Fisher strand test: SR or PB (tissue-level)">',
@@ -663,10 +657,15 @@ class TieredVCF:
 
                     # Parse CORE_CALLS to determine which cores called this variant
                     core_calls_raw = orig_rec.info.get("CORE_CALLS")
+                    if isinstance(core_calls_raw, (tuple, list)):
+                        core_calls_raw = ','.join(str(v) for v in core_calls_raw)
                     core_calls     = parse_core_calls(core_calls_raw)
 
-                    # REGION (preserved from upstream filters)
-                    region_val = orig_rec.info.get("REGION")
+                    # REGION (preserved from upstream filters; may be absent in older VCFs)
+                    try:
+                        region_val = orig_rec.info.get("REGION")
+                    except (ValueError, KeyError):
+                        region_val = None
 
                     # Tissue-level pooled counts (tissue-matched PB and ONT)
                     tpb  = self.minipileup_vcf.tissue_pb_counts.get(key)  or SampleCounts("PB_TISSUE")
@@ -719,30 +718,29 @@ class TieredVCF:
                     for core in cores:
                         called = core in core_calls
                         cc = per_core.get(core, {
-                            'SR':  SampleCounts(core),
-                            'PB':  SampleCounts(core),
-                            'ONT': SampleCounts(core),
+                            'SR': SampleCounts(core),
+                            'PB': SampleCounts(core),
                         })
-                        sr  = cc['SR']
-                        pb  = cc['PB']
-                        ont = cc['ONT']
+                        sr = cc['SR']
+                        pb = cc['PB']
 
-                        new_rec.samples[core]['GT'] = '0/1' if called else './.'
+                        if called:
+                            has_pileup_support = (sr.ALT_ADF + sr.ALT_ADR + pb.ALT_ADF + pb.ALT_ADR) > 0
+                            gt = '0/1' if has_pileup_support else '0/0'
+                        else:
+                            gt = './.'
+                        new_rec.samples[core]['GT'] = gt
 
-                        new_rec.samples[core]['SR_ADF']  = (sr.REF_ADF,  sr.ALT_ADF)
-                        new_rec.samples[core]['SR_ADR']  = (sr.REF_ADR,  sr.ALT_ADR)
-                        new_rec.samples[core]['PB_ADF']  = (pb.REF_ADF,  pb.ALT_ADF)
-                        new_rec.samples[core]['PB_ADR']  = (pb.REF_ADR,  pb.ALT_ADR)
-                        new_rec.samples[core]['ONT_ADF'] = (ont.REF_ADF, ont.ALT_ADF)
-                        new_rec.samples[core]['ONT_ADR'] = (ont.REF_ADR, ont.ALT_ADR)
+                        new_rec.samples[core]['SR_ADF'] = (sr.REF_ADF, sr.ALT_ADF)
+                        new_rec.samples[core]['SR_ADR'] = (sr.REF_ADR, sr.ALT_ADR)
+                        new_rec.samples[core]['PB_ADF'] = (pb.REF_ADF, pb.ALT_ADF)
+                        new_rec.samples[core]['PB_ADR'] = (pb.REF_ADR, pb.ALT_ADR)
 
-                        sr_total  = sr.REF_ADF  + sr.REF_ADR  + sr.ALT_ADF  + sr.ALT_ADR
-                        pb_total  = pb.REF_ADF  + pb.REF_ADR  + pb.ALT_ADF  + pb.ALT_ADR
-                        ont_total = ont.REF_ADF + ont.REF_ADR + ont.ALT_ADF + ont.ALT_ADR
+                        sr_total = sr.REF_ADF + sr.REF_ADR + sr.ALT_ADF + sr.ALT_ADR
+                        pb_total = pb.REF_ADF + pb.REF_ADR + pb.ALT_ADF + pb.ALT_ADR
 
-                        new_rec.samples[core]['SR_VAF']  = float(sr.ALT_ADF  + sr.ALT_ADR)  / sr_total  if sr_total  > 0 else 0.0
-                        new_rec.samples[core]['PB_VAF']  = float(pb.ALT_ADF  + pb.ALT_ADR)  / pb_total  if pb_total  > 0 else 0.0
-                        new_rec.samples[core]['ONT_VAF'] = float(ont.ALT_ADF + ont.ALT_ADR) / ont_total if ont_total > 0 else 0.0
+                        new_rec.samples[core]['SR_VAF'] = float(sr.ALT_ADF + sr.ALT_ADR) / sr_total if sr_total > 0 else 0.0
+                        new_rec.samples[core]['PB_VAF'] = float(pb.ALT_ADF + pb.ALT_ADR) / pb_total if pb_total > 0 else 0.0
 
                         new_rec.samples[core]['TIER']   = tier
                         new_rec.samples[core]['SB_PVAL'] = sb_pval

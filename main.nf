@@ -47,9 +47,7 @@ def ensureTabixIndex(vcf_path) {
     return tbi_path
 }
 
-def poe_fa = file(params.panel_of_errors)
-def poe_fai = file(params.panel_of_errors_index)
-def poe_input = tuple(poe_fa, poe_fai)
+def poe_input = file(params.panel_of_errors)
 
 def regions_input = tuple(file(params.easy_regions),file(params.diff_regions),file(params.ext_regions),
                           file(params.easy_regions + ".tbi"),file(params.diff_regions + ".tbi"),file(params.ext_regions + ".tbi"))
@@ -112,7 +110,7 @@ input_sr
         tuple(donor, crams, crais, tissues)   // tissue label per CRAM = source tissue
     }
     .flatMap { donor, crams, crais, tissue_labels ->
-        tissue_labels.unique().collect { tissue ->
+        tissue_labels.unique(false).collect { tissue ->
             tuple(tissue, crams, crais, tissue_labels)
         }
     }
@@ -182,7 +180,7 @@ def input_bams = sr_by_tissue
     .join(ont_by_tissue)
     .map { tissue, sr_crams, sr_crais, lr_crams, lr_crais, lr_tissues, ont_crams, ont_crais, ont_tissues ->
         if (!sr_crams || sr_crams.size() == 0) {
-            throw new IllegalArgumentException(“Tissue ${tissue} has no short-read CRAMs — at least one required”)
+            throw new IllegalArgumentException("Tissue ${tissue} has no short-read CRAMs — at least one required")
         }
         tuple(tissue, sr_crams, sr_crais, lr_crams, lr_crais, lr_tissues, ont_crams, ont_crais, ont_tissues)
     }
@@ -193,13 +191,13 @@ def input_bams = sr_by_tissue
 def cram_map_sr = input_sr
     .map { tissue, core, cram, crai ->
         def basename = cram.name.replaceAll(/\.(cram|bam)$/, '')
-        [“${tissue}.core_cram_map.tsv”, “${core}\t${basename}\tSR\n”]
+        ["${tissue}.core_cram_map.tsv", "${core}\t${basename}\tSR\n"]
     }
 
 def cram_map_lr = params.longread_csv ? input_lr
     .map { tissue, core, cram, crai ->
         def basename = cram.name.replaceAll(/\.(cram|bam)$/, '')
-        [“${tissue}.core_cram_map.tsv”, “${core}\t${basename}\tPB\n”]
+        ["${tissue}.core_cram_map.tsv", "${core}\t${basename}\tPB\n"]
     } : Channel.empty()
 
 // ONT has no core — not added to core_cram_map (pooled annotation only)
@@ -233,14 +231,14 @@ def cram_map_sr_merged = mergedCoreExpansions()
     .join(input_sr.map { tissue, core, cram, crai -> tuple([tissue, core], cram) })
     .map { key, merged_core, cram ->
         def basename = cram.name.replaceAll(/\.(cram|bam)$/, '')
-        [“${key[0]}.core_cram_map.tsv”, “${merged_core}\t${basename}\tSR\n”]
+        ["${key[0]}.core_cram_map.tsv", "${merged_core}\t${basename}\tSR\n"]
     }
 
 def cram_map_lr_merged = params.longread_csv ? mergedCoreExpansions()
     .join(input_lr.map { tissue, core, cram, crai -> tuple([tissue, core], cram) })
     .map { key, merged_core, cram ->
         def basename = cram.name.replaceAll(/\.(cram|bam)$/, '')
-        [“${key[0]}.core_cram_map.tsv”, “${merged_core}\t${basename}\tPB\n”]
+        ["${key[0]}.core_cram_map.tsv", "${merged_core}\t${basename}\tPB\n"]
     } : Channel.empty()
 
 cram_map_sr.mix(cram_map_lr)
@@ -275,8 +273,8 @@ def truth_ch = Channel
     .splitCsv(header: true)
     .map{ row ->
         def id = row.id
-        def truth_vcf = row.truth_vcf ? file(row.truth_vcf) : file(“none.vcf”)
-        def truth_tbi = row.truth_vcf ? file(row.truth_vcf + '.tbi') : file(“none.vcf.tbi”)
+        def truth_vcf = row.truth_vcf ? file(row.truth_vcf) : file("none.vcf")
+        def truth_tbi = row.truth_vcf ? file(row.truth_vcf + '.tbi') : file("none.vcf.tbi")
         tuple(id, truth_vcf, truth_tbi)
     }
 

@@ -15,7 +15,7 @@ set -euo pipefail
 usage() {
   cat <<EOF
 Usage: $0 -i input.vcf.gz -r reference.fasta [-o prefix] \\
-          [--sr-cram CRAM ...] [--pb-cram CRAM ...] [--ont-cram CRAM ...] \\
+		  [--sr-cram CRAM ...] [--lr-cram CRAM ... --lr-tissue TISSUE --lr-type PB|ONT ...] \\
           [-t threads] [--args "additional minipileup args"] [--group INT]
 
   -i             Input VCF (bgzipped) with .tbi index (required)
@@ -25,10 +25,9 @@ Usage: $0 -i input.vcf.gz -r reference.fasta [-o prefix] \\
   --args         Additional arguments to pass to minipileup (in quotes) (default: "-c -C -Q 20 -q 30 -s 0")
 
   --sr-cram      Short-read CRAM with .crai file, also accept BAM with .bai or .csi index (repeatable)
-  --pb-cram      PacBio long-read CRAM with .crai file, also accept BAM with .bai or .csi index (repeatable)
-  --pb-tissue    Tissue ID matching each --pb-cram (repeatable) (eg SMHT005-3AF)
-  --ont-cram     ONT long-read CRAM with .crai file, also accept BAM with .bai or .csi index (repeatable)
-  --ont-tissue   Tissue ID matching each --ont-cram (repeatable) (eg SMHT005-3AF)
+  --lr-cram      Long-read CRAM/BAM with index (repeatable)
+  --lr-tissue    Tissue ID matching each --lr-cram (repeatable) (eg SMHT005-3AF)
+  --lr-type      Sequencing type matching each --lr-cram (repeatable) (eg PB or ONT)
 
   --group        Group intervals into batches of INT for processing (default: 100)
 EOF
@@ -50,11 +49,17 @@ GROUP=100
 # drop alleles with depth<INT (-s)
 
 SR_CRAMS=()
+
+# Long-read inputs (user-facing)
+LR_CRAMS=()
+LR_TISSUES=()
+LR_TYPES=()
+
+# Internal arrays (kept to minimize downstream diffs)
 PB_CRAMS=()
 PB_TISSUES=()
 ONT_CRAMS=()
 ONT_TISSUES=()
-
 
 # Parse args
 while [[ $# -gt 0 ]]; do
@@ -66,11 +71,9 @@ while [[ $# -gt 0 ]]; do
     --args) MINPILEUP_ARGS="$2"; shift 2;;
 
     --sr-cram) SR_CRAMS+=("$2"); shift 2;;
-    --pb-cram) PB_CRAMS+=("$2"); shift 2;;
-    --pb-tissue) PB_TISSUES+=("$2"); shift 2;;
-    --ont-cram) ONT_CRAMS+=("$2"); shift 2;;
-    --ont-tissue) ONT_TISSUES+=("$2"); shift 2;;
-
+    --lr-cram)   LR_CRAMS+=("$2"); shift 2;;
+    --lr-tissue) LR_TISSUES+=("$2"); shift 2;;
+    --lr-type)   LR_TYPES+=("$2"); shift 2;;
 
     --group) GROUP="$2"; shift 2;;
 
@@ -92,10 +95,44 @@ done
 [[ -f "$REFERENCE_FASTA" ]] || { echo "Error: $REFERENCE_FASTA not found"; exit 1; }
 [[ -f "${REFERENCE_FASTA}.fai" ]] || { echo "Error: ${REFERENCE_FASTA}.fai not found"; exit 1; }
 
+# Long-read presence & 1:1:1 mapping
+(( ${#LR_CRAMS[@]} > 0 )) || { echo "Error: at least one --lr-cram required"; exit 1; }
+(( ${#LR_CRAMS[@]} == ${#LR_TISSUES[@]} )) || {
+  echo "Error: number of --lr-cram entries must equal number of --lr-tissue entries"; exit 1;
+}
+(( ${#LR_CRAMS[@]} == ${#LR_TYPES[@]} )) || {
+  echo "Error: number of --lr-cram entries must equal number of --lr-type entries"; exit 1;
+}
+
+# Route LR inputs into PB_* and ONT_* arrays (downstream code stays the same)
+for i in "${!LR_CRAMS[@]}"; do
+  t="${LR_TYPES[$i]}"
+  # normalize to uppercase for robustness
+  t_up="$(printf "%s" "$t" | tr '[:lower:]' '[:upper:]')"
+  case "$t_up" in
+    PB)
+      PB_CRAMS+=("${LR_CRAMS[$i]}")
+      PB_TISSUES+=("${LR_TISSUES[$i]}")
+      ;;
+    ONT)
+      ONT_CRAMS+=("${LR_CRAMS[$i]}")
+      ONT_TISSUES+=("${LR_TISSUES[$i]}")
+      ;;
+    *)
+      echo "Error: invalid --lr-type '$t' for --lr-cram '${LR_CRAMS[$i]}'. Expected 'PB' or 'ONT'."
+      exit 1
+      ;;
+  esac
+done
+
+
+(( ${#PB_CRAMS[@]} > 0 )) || { echo "Error: at least one PB long-read (--lr-type PB) required"; exit 1; }
+
+
 # CRAM/BAM checks (index check too)
 ALL_CRAMS=("${SR_CRAMS[@]}" "${PB_CRAMS[@]}" "${ONT_CRAMS[@]}")
 if (( ${#ALL_CRAMS[@]} == 0 )); then
-  echo "Error: no BAM/CRAM files provided. Please specify at least one with --sr-cram/--pb-cram/--ont-cram"
+  echo "Error: no BAM/CRAM files provided. Please specify at least one with --sr-cram/--lr-cram"
   exit 1
 else
   for b in "${ALL_CRAMS[@]}"; do
@@ -117,17 +154,6 @@ else
       exit 1
     fi
   done
-fi
-
-(( ${#PB_CRAMS[@]} > 0 )) || { echo "Error: at least one --pb-cram required"; exit 1; }
-(( ${#PB_CRAMS[@]} == ${#PB_TISSUES[@]} )) || {
-  echo "Error: number of --pb-cram entries must equal number of --pb-tissue entries"; exit 1;
-}
-
-if (( ${#ONT_CRAMS[@]} > 0 )); then
-  (( ${#ONT_CRAMS[@]} == ${#ONT_TISSUES[@]} )) || {
-    echo "Error: number of --ont-cram entries must equal number of --ont-tissue entries"; exit 1;
-  }
 fi
 
 # Tool checks
@@ -160,6 +186,10 @@ HEADER_VCF="${WORKDIR}/header.vcf"
 # Extract intervals from VCF
 echo "Extracting intervals to file..."
 bcftools query -f '%CHROM:%POS-%END\n' "$INPUT_VCF" > "$INTERVALS"
+if [[ ! -s "$INTERVALS" ]]; then
+  echo "Error: input VCF contains no valid variants" >&2
+  exit 1
+fi
 
 # Group intervals into batches (to reduce overhead)
 GROUPED="${WORKDIR}/intervals_grouped.txt"
@@ -196,91 +226,115 @@ run_region() {
     local HBAMS=()
     for cram in "${CRAMS[@]}"; do
       local bam="${WORKDIR}/$(basename "${cram%.*}")_${safe}.bam"
-      samtools view --reference "$REFERENCE_FASTA" --write-index -b -o "$bam" "$cram" chr1:10001-10001
+      samtools view --write-index --reference "$REFERENCE_FASTA" -b -o "$bam" "$cram" "$key"
       HBAMS+=("$bam")
     done
-
-	# Run minipileup for this region (avoid piping so segfault can't break the shell pipeline)
-    tmp_out="${WORKDIR}/minipileup.$$.$RANDOM.out"
-
     minipileup -f "$REFERENCE_FASTA" \
       $MINPILEUP_ARGS \
-      -r chr1:10001-10001 \
-      "${HBAMS[@]}" > "$tmp_out"
-    mp_status=$?
-
-    if [[ $mp_status -eq 139 ]]; then
-      echo "Seg fault at $region" >&2
-      rm -f "$tmp_out"
-      for b in "${HBAMS[@]}"; do rm -f "$b" "${b}.csi"; done
-      continue
-    elif [[ $mp_status -ne 0 ]]; then
-      # keep prior behavior: don't kill the overall job on other minipileup failures
-      rm -f "$tmp_out"
-      true
-    else
-      grep '^#' "$tmp_out" >> "$HEADER_VCF" || true
-      rm -f "$tmp_out"
-    fi
-
-    #minipileup -f "$REFERENCE_FASTA" \
-    #  $MINPILEUP_ARGS \
-    #  -r chr1:10001-10001 \
-    #  "${HBAMS[@]}" | grep '^#' > "$HEADER_VCF"
-
+      -r "$key" \
+      "${HBAMS[@]}" | grep '^#' > "$HEADER_VCF"
     # Cleanup header-only BAMs
     for b in "${HBAMS[@]}"; do rm -f "$b" "${b}.csi"; done
 
     return 0 # avoid processing the body for the header run
   fi
 
-  # For the group body: loop regions; for each region build BAMs, run minipileup, append
+  # For the group body: sort regions, cluster nearby ones, share BAM extractions
   local group_vcf="${WORKDIR}/${safe}.group.vcf"
   : > "$group_vcf"
 
-  for region in "${REG_ARR[@]}"; do
-    local rsafe="${region//:/_}"; rsafe="${rsafe//-/__}"
+  # Sort regions by chromosome then start position
+  local -a SORTED_REGIONS=()
+  mapfile -t SORTED_REGIONS < <(
+    for r in "${REG_ARR[@]}"; do echo "$r"; done \
+    | sort -t: -k1,1V -k2,2n
+  )
 
-    # Extract region to BAM files
-    local BAMS=()
+  [[ ${#SORTED_REGIONS[@]} -eq 0 ]] && return
+
+  # flush_cluster: extract one BAM per CRAM for the cluster span, run minipileup
+  # per region in the cluster using the shared BAMs, then clean up.
+  # Uses local -a (not declare -a) for the nameref target so bash resolves it correctly.
+  flush_cluster() {
+    local -n _regions=$1
+    local span_chr=$2 span_min=$3 span_max=$4
+    [[ ${#_regions[@]} -eq 0 ]] && return
+
+    local span="${span_chr}:${span_min}-${span_max}"
+    local csafe="${span//:/_}"; csafe="${csafe//-/__}"
+
+    # One BAM extraction per CRAM for the full cluster span
+    local -a CLUSTER_BAMS=()
     for cram in "${CRAMS[@]}"; do
-      local bam="${WORKDIR}/$(basename "${cram%.*}")_${rsafe}.bam"
-      samtools view --reference "$REFERENCE_FASTA" --write-index -b -o "$bam" "$cram" "$region"
-      BAMS+=("$bam")
+      local bam="${WORKDIR}/$(basename "${cram%.*}")_${csafe}.bam"
+      samtools view --write-index --reference "$REFERENCE_FASTA" -b -o "$bam" "$cram" "$span"
+      CLUSTER_BAMS+=("$bam")
     done
 
-    # Run minipileup for this region (avoid piping so segfault can't break the shell pipeline)
-    tmp_out="${WORKDIR}/minipileup_${rsafe}.$$.$RANDOM.out"
+    # Run minipileup once per region in the cluster, reusing the shared BAMs
+    # NOTE: use _r not 'region' — bash for-loop vars are not local; 'region' is
+    # the outer run_region loop variable and would be clobbered here, causing
+    # CLUSTER_REGIONS=("$region") after flush to use the wrong (last old) region.
+    for _r in "${_regions[@]}"; do
+      local rsafe="${_r//:/_}"; rsafe="${rsafe//-/__}"
+      local tmp_out="${WORKDIR}/minipileup_${rsafe}.$$.$RANDOM.out"
 
-    minipileup -f "$REFERENCE_FASTA" \
-      $MINPILEUP_ARGS \
-      -r "$region" \
-      "${BAMS[@]}" > "$tmp_out"
-    mp_status=$?
+      set +e
+      minipileup -f "$REFERENCE_FASTA" \
+        $MINPILEUP_ARGS \
+        -r "$_r" \
+        "${CLUSTER_BAMS[@]}" > "$tmp_out"
+      local mp_status=$?
+      set -e
 
-    if [[ $mp_status -eq 139 ]]; then
-      echo "Seg fault at $region" >&2
-      rm -f "$tmp_out"
-      for b in "${BAMS[@]}"; do rm -f "$b" "${b}.csi"; done
-      continue
-    elif [[ $mp_status -ne 0 ]]; then
-      # keep prior behavior: don't kill the overall job on other minipileup failures
-      rm -f "$tmp_out"
-      true
+      if [[ $mp_status -eq 139 ]]; then
+        echo "Seg fault at $_r" >&2
+        rm -f "$tmp_out"
+      elif [[ $mp_status -ne 0 ]]; then
+        rm -f "$tmp_out"
+      else
+        grep -v '^#' "$tmp_out" >> "$group_vcf" || true
+        rm -f "$tmp_out"
+      fi
+    done
+
+    # Cleanup cluster BAMs
+    for b in "${CLUSTER_BAMS[@]}"; do rm -f "$b" "${b}.csi"; done
+    _regions=()
+  }
+
+  # Initialize cluster from the first region directly — avoids the sentinel-value
+  # pattern (cluster_chr="") that caused the first region to be skipped when
+  # nameref resolution of the empty-array guard misfired on certain bash versions.
+  local first_r="${SORTED_REGIONS[0]}"
+  local cluster_chr="${first_r%%:*}"
+  local first_coords="${first_r#*:}"
+  local cluster_min="${first_coords%-*}"
+  local cluster_max="${first_coords#*-}"
+  local -a CLUSTER_REGIONS=("$first_r")
+
+  # Greedy proximity clustering: group regions within 10000bp of the cluster's current max end
+  for region in "${SORTED_REGIONS[@]:1}"; do
+    local chr="${region%%:*}"
+    local coords="${region#*:}"
+    local rstart="${coords%-*}"
+    local rend="${coords#*-}"
+
+    if [[ "$chr" == "$cluster_chr" && $(( rstart - cluster_max )) -le 10000 && "$rstart" -ge "$cluster_min" ]]; then
+      # Extend current cluster
+      CLUSTER_REGIONS+=("$region")
+      (( rend > cluster_max )) && cluster_max=$rend
     else
-      grep -v '^#' "$tmp_out" >> "$group_vcf" || true
-      rm -f "$tmp_out"
+      # Flush current cluster and start a new one
+      flush_cluster CLUSTER_REGIONS "$cluster_chr" "$cluster_min" "$cluster_max"
+      CLUSTER_REGIONS=("$region")
+      cluster_chr="$chr"
+      cluster_min=$rstart
+      cluster_max=$rend
     fi
-
-    ## Run minipileup for this region
-    #minipileup -f "$REFERENCE_FASTA" \
-    #  $MINPILEUP_ARGS \
-    #  -r "$region" \
-    #  "${BAMS[@]}" | grep -v '^#' >> "$group_vcf" || true
-
-    # Cleanup per-region BAMs
-    for b in "${BAMS[@]}"; do rm -f "$b" "${b}.csi"; done
   done
+  # Flush the final cluster
+  flush_cluster CLUSTER_REGIONS "$cluster_chr" "$cluster_min" "$cluster_max"
 }
 
 # Make the function available to xargs bash -c
@@ -292,10 +346,8 @@ export SORTED_VCF="${WORKDIR}/sorted.vcf"
 
 # Safety check
 if [[ ! -s "$GROUPED" ]]; then
-    echo "Error: grouped intervals file is empty"
-    run_region chr1:10001-10001 1 "${ALL_CRAMS[@]}"
-
-    cat "$HEADER_VCF" > "$MERGED_VCF"
+    echo "Error: interval grouping produced empty output (unexpected). Check awk/group settings." >&2
+    exit 1
 else
     # Create temporary VCF file with header only
     echo "Creating temporary VCF with header..."

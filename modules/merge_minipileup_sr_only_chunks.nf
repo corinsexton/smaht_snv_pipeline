@@ -26,11 +26,14 @@ process merge_minipileup_sr_only_chunks {
 
     script:
     """
-    # Sort chunk files by name to ensure chromosome order
-    readarray -t sorted_chunks < <(printf '%s\n' ${mp_chunk_vcfs.join(' ')} | sort -V)
+    # Sort chunk files by name and skip empty chunks
+    nonempty=()
+    for f in \$(printf '%s\n' ${mp_chunk_vcfs.join(' ')} | sort -V); do
+        [[ \$(bcftools view -H "\${f}" | wc -l) -gt 0 ]] && nonempty+=("\${f}")
+    done
 
     bcftools concat -Oz -o ${id}.minipileup_sr.merged.vcf.gz \\
-        "\${sorted_chunks[@]}"
+        "\${nonempty[@]}"
     bcftools index -t ${id}.minipileup_sr.merged.vcf.gz
     """
 }

@@ -28,9 +28,10 @@ process merge_minipileup_chunks {
           path("${id}.minipileup.merged.vcf.gz.tbi")
 
     script:
+    def sorted_vcfs = mp_chunk_vcfs.sort { it.name }
     """
     bcftools concat -Oz -o ${id}.minipileup.merged.vcf.gz \\
-        ${mp_chunk_vcfs.join(' ')}
+        ${sorted_vcfs.join(' ')}
     bcftools index -t ${id}.minipileup.merged.vcf.gz
     """
 }

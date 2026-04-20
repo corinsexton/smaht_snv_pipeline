@@ -341,8 +341,8 @@ class TieredVCF:
         self.tiers = dict()  # (chrom, pos, ref, alt) -> tier
         self.alt_supports = dict()  # (chrom, pos, ref, alt) -> ALT_SUPPORT string
         self.tests = dict()  # (chrom, pos, ref, alt) -> {fisher: FisherTestResult, binomial: BinomialTestResult}
-        self.sr_cutoffs = None
-        self.pb_cutoffs = None
+        self.sr_cutoffs = dict()  # (chrom, pos, ref, alt) -> float
+        self.pb_cutoffs = dict()  # (chrom, pos, ref, alt) -> float
         # Only store TIER1 and TIER2 variants, others are not in dict
         self.definitions = [
             # CrossTech classification
@@ -404,12 +404,12 @@ class TieredVCF:
             if SR_ALT_TOTAL >= thresholds["combined_SR"] and PB_ALT_TOTAL >= thresholds["combined_PB"]:
                 self.tiers[key] = "TIER1"
                 self.alt_supports[key] = 'PASS_SR_PB'
-                self.sr_cutoffs = thresholds["combined_SR"]
-                self.pb_cutoffs = thresholds["combined_PB"]
+                self.sr_cutoffs[key] = thresholds["combined_SR"]
+                self.pb_cutoffs[key] = thresholds["combined_PB"]
             elif SR_ALT_TOTAL >= thresholds["SR"]:
                 self.tiers[key] = "TIER2"
                 self.alt_supports[key] = 'PASS_SR'
-                self.sr_cutoffs = thresholds["combined_SR"]
+                self.sr_cutoffs[key] = thresholds["combined_SR"]
             else:
                 self.alt_supports[key] = 'FAIL'
         else:
@@ -640,11 +640,11 @@ class TieredVCF:
                     if glm_pvals:
                         record.info["GERMLINE_PVAL"] = min(glm_pvals)
 
-                    if tier == 'TIER1' and self.pb_cutoffs is not None:
-                        record.info["PB_READ_CUTOFF"] = self.pb_cutoffs
+                    if tier == 'TIER1' and key in self.pb_cutoffs:
+                        record.info["PB_READ_CUTOFF"] = self.pb_cutoffs[key]
 
-                    if self.sr_cutoffs is not None:
-                        record.info["SR_READ_CUTOFF"] = self.sr_cutoffs
+                    if key in self.sr_cutoffs:
+                        record.info["SR_READ_CUTOFF"] = self.sr_cutoffs[key]
                     record.info["ALT_SUPPORT"] = self.alt_supports.get(key, 'FAIL')
                     # Write record
                     vf_out.write(record)

@@ -539,6 +539,12 @@ class TieredVCF:
         self.tests.setdefault(key, dict())
         self.tests[key]["binomial"] = binom_result
 
+    def _binom_pval(self, alt_total: int, total: int):
+        """Return binomial p-value (less) against 0.5, or None if not enough reads."""
+        if alt_total >= self.min_alt_binom and total > 0:
+            return binom_pvalue(alt_total, total, 0.5, alternative='less')
+        return None
+
     def filter_variants(self):
         """
         Filter variants in self.snvs based on counts from minipileup
@@ -576,20 +582,14 @@ class TieredVCF:
 
         # FORMAT field definitions (per-core)
         format_defs = [
-            '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype: 0/1=called+pileup-supported, 0/0=called+no-pileup-support, ./.=not called by any caller in this core">',
+            '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype: 0/1=called+passed all filters, 0/0=called+failed a filter, ./.=not called in this core">',
             '##FORMAT=<ID=SR_ADF,Number=2,Type=Integer,Description="Per-core short-read forward depths (REF,ALT)">',
             '##FORMAT=<ID=SR_ADR,Number=2,Type=Integer,Description="Per-core short-read reverse depths (REF,ALT)">',
             '##FORMAT=<ID=PB_ADF,Number=2,Type=Integer,Description="Per-core tissue-matched PacBio forward depths (REF,ALT)">',
             '##FORMAT=<ID=PB_ADR,Number=2,Type=Integer,Description="Per-core tissue-matched PacBio reverse depths (REF,ALT)">',
             '##FORMAT=<ID=SR_VAF,Number=1,Type=Float,Description="Per-core short-read variant allele fraction">',
             '##FORMAT=<ID=PB_VAF,Number=1,Type=Float,Description="Per-core tissue-matched PacBio variant allele fraction">',
-            '##FORMAT=<ID=TIER,Number=1,Type=String,Description="Tier classification: TIER1=LR-supported, TIER2=SR-only (tissue-level)">',
-            '##FORMAT=<ID=SB_PVAL,Number=1,Type=Float,Description="Fisher exact test p-value for strand balance (tissue-level)">',
-            '##FORMAT=<ID=SB_SRC,Number=1,Type=String,Description="Platform used for Fisher strand test: SR or PB (tissue-level)">',
-            '##FORMAT=<ID=GERMLINE_PVAL,Number=1,Type=Float,Description="Min binomial p-value for germline deviation across platforms (tissue-level)">',
-            '##FORMAT=<ID=GERMLINE_PVAL_SR,Number=1,Type=Float,Description="Binomial p-value for germline deviation in SR data (tissue-level, TIER2 only)">',
-            '##FORMAT=<ID=GERMLINE_PVAL_PB,Number=1,Type=Float,Description="Binomial p-value for germline deviation in PB data (tissue-level, TIER1 only)">',
-            '##FORMAT=<ID=GERMLINE_PVAL_ONT,Number=1,Type=Float,Description="Binomial p-value for germline deviation in ONT data (tissue-level, TIER1 only)">',
+            '##FORMAT=<ID=ALT_SUPPORT,Number=1,Type=Integer,Description="1 if this core\'s ALT reads meet the standalone read cutoff for its coverage, 0 otherwise">',
             '##FORMAT=<ID=CrossCaller,Number=1,Type=Integer,Description="1 if alt found in more than one caller for this core, 0 otherwise">',
             '##FORMAT=<ID=CALLERS,Number=.,Type=String,Description="Callers that reported this variant for this core">',
         ]
@@ -597,6 +597,7 @@ class TieredVCF:
         # INFO field definitions (tissue-level)
         info_defs = [
             '##INFO=<ID=CrossTech,Number=0,Type=Flag,Description="Alt supported in both short read and tissue-matched PacBio at or above combined thresholds">',
+            '##INFO=<ID=CrossCore,Number=0,Type=Flag,Description="Variant has GT=0/1 in more than one core">',
             '##INFO=<ID=POOLED_PB_VAF,Number=1,Type=Float,Description="Tissue-matched PacBio VAF pooled across all cores">',
             '##INFO=<ID=POOLED_ONT_VAF,Number=1,Type=Float,Description="Tissue-matched ONT VAF pooled across all cores">',
             '##INFO=<ID=POOLED_PB_ADF,Number=2,Type=Integer,Description="Tissue-matched PacBio forward depths pooled across all cores (REF,ALT)">',
@@ -605,6 +606,13 @@ class TieredVCF:
             '##INFO=<ID=POOLED_ONT_ADR,Number=2,Type=Integer,Description="Tissue-matched ONT reverse depths pooled across all cores (REF,ALT)">',
             '##INFO=<ID=REGION,Number=1,Type=String,Description="SMaHT region classification: easy, diff, or ext">',
             '##INFO=<ID=CORE_CALLS,Number=1,Type=String,Description="Per-core caller presence: core1:caller1,caller2|core2:caller1">',
+            '##INFO=<ID=GERMLINE_PVAL,Number=1,Type=Float,Description="Min binomial p-value for germline deviation across pooled platforms (tissue-level SR; donor-level PB and ONT)">',
+            '##INFO=<ID=GERMLINE_PVAL_SR,Number=1,Type=Float,Description="Binomial p-value for germline deviation in pooled SR data (tissue-level)">',
+            '##INFO=<ID=GERMLINE_PVAL_PB,Number=1,Type=Float,Description="Binomial p-value for germline deviation in pooled PacBio data across all tissues (donor-level)">',
+            '##INFO=<ID=GERMLINE_PVAL_ONT,Number=1,Type=Float,Description="Binomial p-value for germline deviation in pooled ONT data across all tissues (donor-level)">',
+            '##INFO=<ID=TIER,Number=1,Type=String,Description="Tissue-level tier: TIER1=SR+LR cross-tech supported, TIER2=SR-only">',
+            '##INFO=<ID=SB_PVAL,Number=1,Type=Float,Description="Fisher exact test p-value for strand balance on pooled counts">',
+            '##INFO=<ID=SB_SRC,Number=1,Type=String,Description="Platform used for pooled Fisher strand test: SR or PB">',
         ]
 
         with pysam.VariantFile(self.original_vcf.vcf_path) as vf_in:
@@ -631,7 +639,32 @@ class TieredVCF:
                         continue
 
                     tier = self.tiers.get(key)
-                    if tier not in {"TIER1", "TIER2"}:
+
+                    orig_rec = self.snvs[key]
+                    chrom, pos, ref, alt = key
+
+                    # Parse CORE_CALLS to determine which cores called this variant
+                    core_calls_raw = orig_rec.info.get("CORE_CALLS")
+                    if isinstance(core_calls_raw, (tuple, list)):
+                        core_calls_raw = ','.join(str(v) for v in core_calls_raw)
+                    core_calls = parse_core_calls(core_calls_raw)
+                    per_core   = self.minipileup_vcf.core_counts.get(key, {})
+
+                    # Per-core read cutoff gate: keep variant if any called core's ALT reads
+                    # meet the standalone read cutoff computed from that core's own coverage.
+                    core_alt_support = {}  # core -> bool
+                    for core in cores:
+                        if core not in core_calls:
+                            core_alt_support[core] = False
+                            continue
+                        cc = per_core.get(core, {'SR': SampleCounts(core), 'PB': SampleCounts(core)})
+                        core_types = {ctype for _, ctype in core_cram_map.get(core, [])}
+                        sc = cc['SR'] if 'SR' in core_types else cc['PB']
+                        core_total = sc.REF_ADF + sc.REF_ADR + sc.ALT_ADF + sc.ALT_ADR
+                        core_alt   = sc.ALT_ADF + sc.ALT_ADR
+                        core_alt_support[core] = core_total > 0 and core_alt >= get_read_cutoffs(core_total, 0)["SR"]
+
+                    if not any(core_alt_support.values()):
                         continue
 
                     fisher_result = self.tests[key]["fisher"]
@@ -641,25 +674,18 @@ class TieredVCF:
                     if tier == "TIER2":
                         binom_pass      = binom_result.is_pass("SR", self.germline_alpha_SR)
                         binom_pass_long = True
-                    else:
+                    elif tier == "TIER1":
                         binom_pass_pb  = binom_result.is_pass("PB",  self.germline_alpha)
                         binom_pass_ont = binom_result.is_pass("ONT", self.germline_alpha)
                         binom_pass, binom_pass_long = True, True
                         if binom_pass_pb is False or binom_pass_ont is False:
                             binom_pass_long = False
+                    else:
+                        binom_pass, binom_pass_long = True, True
 
                     if fisher_pass is False or binom_pass is False or binom_pass_long is False:
                         fail_filters += 1
                         continue
-
-                    orig_rec = self.snvs[key]
-                    chrom, pos, ref, alt = key
-
-                    # Parse CORE_CALLS to determine which cores called this variant
-                    core_calls_raw = orig_rec.info.get("CORE_CALLS")
-                    if isinstance(core_calls_raw, (tuple, list)):
-                        core_calls_raw = ','.join(str(v) for v in core_calls_raw)
-                    core_calls     = parse_core_calls(core_calls_raw)
 
                     # REGION (preserved from upstream filters; may be absent in older VCFs)
                     try:
@@ -703,14 +729,25 @@ class TieredVCF:
                     if core_calls_raw is not None:
                         new_rec.info['CORE_CALLS'] = core_calls_raw
 
-                    # Tissue-level test results (same across all cores)
-                    sb_pval    = fisher_result.p_value
-                    sb_src     = fisher_result.group
                     gp_sr      = binom_result.p_value_SR
                     gp_pb      = binom_result.p_value_PB
                     gp_ont     = binom_result.p_value_ONT
                     all_gp     = [p for p in [gp_sr, gp_pb, gp_ont] if p is not None]
                     gp_min     = min(all_gp) if all_gp else None
+
+                    # Pooled germline p-values → INFO (SR: tissue-level; PB/ONT: donor-level)
+                    if gp_sr is not None:
+                        new_rec.info['GERMLINE_PVAL_SR'] = gp_sr
+                    if gp_pb is not None:
+                        new_rec.info['GERMLINE_PVAL_PB'] = gp_pb
+                    if gp_ont is not None:
+                        new_rec.info['GERMLINE_PVAL_ONT'] = gp_ont
+                    if gp_min is not None:
+                        new_rec.info['GERMLINE_PVAL'] = gp_min
+
+                    new_rec.info['TIER']    = tier
+                    new_rec.info['SB_PVAL'] = fisher_result.p_value
+                    new_rec.info['SB_SRC']  = fisher_result.group
 
                     # Per-core FORMAT fields
                     per_core = self.minipileup_vcf.core_counts.get(key, {})
@@ -725,8 +762,7 @@ class TieredVCF:
                         pb = cc['PB']
 
                         if called:
-                            has_pileup_support = (sr.ALT_ADF + sr.ALT_ADR + pb.ALT_ADF + pb.ALT_ADR) > 0
-                            gt = (0, 1) if has_pileup_support else (0, 0)
+                            gt = (0, 1) if core_alt_support.get(core, False) else (0, 0)
                         else:
                             gt = (None, None)
                         new_rec.samples[core]['GT'] = gt
@@ -742,17 +778,7 @@ class TieredVCF:
                         new_rec.samples[core]['SR_VAF'] = float(sr.ALT_ADF + sr.ALT_ADR) / sr_total if sr_total > 0 else 0.0
                         new_rec.samples[core]['PB_VAF'] = float(pb.ALT_ADF + pb.ALT_ADR) / pb_total if pb_total > 0 else 0.0
 
-                        new_rec.samples[core]['TIER']   = tier
-                        new_rec.samples[core]['SB_PVAL'] = sb_pval
-                        new_rec.samples[core]['SB_SRC']  = sb_src
-                        if gp_min is not None:
-                            new_rec.samples[core]['GERMLINE_PVAL'] = gp_min
-                        if gp_sr is not None and tier == 'TIER2':
-                            new_rec.samples[core]['GERMLINE_PVAL_SR'] = gp_sr
-                        if gp_pb is not None and tier == 'TIER1':
-                            new_rec.samples[core]['GERMLINE_PVAL_PB'] = gp_pb
-                        if gp_ont is not None and tier == 'TIER1':
-                            new_rec.samples[core]['GERMLINE_PVAL_ONT'] = gp_ont
+                        new_rec.samples[core]['ALT_SUPPORT'] = 1 if core_alt_support.get(core, False) else 0
 
                         if called:
                             core_callers = core_calls[core]
@@ -760,6 +786,13 @@ class TieredVCF:
                             new_rec.samples[core]['CALLERS']     = core_callers
                         else:
                             new_rec.samples[core]['CrossCaller'] = 0
+
+                    n_called_pass = sum(
+                        1 for core in cores
+                        if new_rec.samples[core]['GT'] == (0, 1)
+                    )
+                    if n_called_pass > 1:
+                        new_rec.info['CrossCore'] = True
 
                     vf_out.write(new_rec)
                     written += 1

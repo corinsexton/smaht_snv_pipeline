@@ -230,7 +230,8 @@ def main():
         new.filter.clear()
 
         info_string = str(rec).split('\t')[7]
-        if 'FAIL' in info_string:
+        pb_phasing = rec.info.get("PB_PHASING", "")
+        if 'FAIL' in info_string or pb_phasing in ("GERMLINE", "ARTIFACT","GERMLINE_SEGDUP"):
             new.filter.add("FAIL")
         else:
             if crossTech or (crossCaller and crossTissue):

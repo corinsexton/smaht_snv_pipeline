@@ -409,9 +409,10 @@ class TieredVCF:
             elif SR_ALT_TOTAL >= thresholds["SR"]:
                 self.tiers[key] = "TIER2"
                 self.alt_supports[key] = 'PASS_SR'
-                self.sr_cutoffs[key] = thresholds["combined_SR"]
+                self.sr_cutoffs[key] = thresholds["SR"]
             else:
                 self.alt_supports[key] = 'FAIL'
+                self.sr_cutoffs[key] = thresholds["SR"]
         else:
             self.alt_supports[key] = 'FAIL_NO_SR'
 

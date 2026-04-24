@@ -590,7 +590,6 @@ class TieredVCF:
             '##FORMAT=<ID=SR_VAF,Number=1,Type=Float,Description="Per-core short-read variant allele fraction">',
             '##FORMAT=<ID=PB_VAF,Number=1,Type=Float,Description="Per-core tissue-matched PacBio variant allele fraction">',
             '##FORMAT=<ID=ALT_SUPPORT,Number=1,Type=Integer,Description="1 if this core\'s ALT reads meet the standalone read cutoff for its coverage, 0 otherwise">',
-            '##FORMAT=<ID=CrossCaller,Number=1,Type=Integer,Description="1 if alt found in more than one caller for this core, 0 otherwise">',
             '##FORMAT=<ID=CALLERS,Number=.,Type=String,Description="Callers that reported this variant for this core">',
         ]
 
@@ -598,6 +597,7 @@ class TieredVCF:
         info_defs = [
             '##INFO=<ID=CrossTech,Number=0,Type=Flag,Description="Alt supported in both short read and tissue-matched PacBio at or above combined thresholds">',
             '##INFO=<ID=CrossCore,Number=0,Type=Flag,Description="Variant has GT=0/1 in more than one core">',
+            '##INFO=<ID=CrossCaller,Number=0,Type=Flag,Description="Alt found in 2+ unique callers across all cores">',
             '##INFO=<ID=POOLED_PB_VAF,Number=1,Type=Float,Description="Tissue-matched PacBio VAF pooled across all cores">',
             '##INFO=<ID=POOLED_ONT_VAF,Number=1,Type=Float,Description="Tissue-matched ONT VAF pooled across all cores">',
             '##INFO=<ID=POOLED_PB_ADF,Number=2,Type=Integer,Description="Tissue-matched PacBio forward depths pooled across all cores (REF,ALT)">',
@@ -825,11 +825,7 @@ class TieredVCF:
                         new_rec.samples[core]['ALT_SUPPORT'] = 1 if core_alt_support.get(core, False) else 0
 
                         if called:
-                            core_callers = core_calls[core]
-                            new_rec.samples[core]['CrossCaller'] = 1 if len(core_callers) > 1 else 0
-                            new_rec.samples[core]['CALLERS']     = core_callers
-                        else:
-                            new_rec.samples[core]['CrossCaller'] = 0
+                            new_rec.samples[core]['CALLERS'] = core_calls[core]
 
                     n_called_pass = sum(
                         1 for core in cores
@@ -837,6 +833,15 @@ class TieredVCF:
                     )
                     if n_called_pass > 1:
                         new_rec.info['CrossCore'] = True
+
+                    all_callers = {
+                        caller
+                        for core in cores
+                        if core in core_calls
+                        for caller in core_calls[core]
+                    }
+                    if len(all_callers) >= 2:
+                        new_rec.info['CrossCaller'] = True
 
                     vf_out.write(new_rec)
                     written += 1

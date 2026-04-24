@@ -118,16 +118,13 @@ def main():
         crossTech   = "CrossTech"   in rec.info
         crossTissue = "CrossTissue" in rec.info
 
-        # CrossCaller lives in FORMAT (per-core Integer, 1=true).
-        # Any core with CrossCaller=1 counts as cross-caller evidence.
-        any_cross_caller = any(
-            rec.samples[s]["CrossCaller"] == 1
-            for s in rec.samples
-            if rec.samples[s]["CrossCaller"] is not None
-        ) if rec.samples else "CrossCaller" in rec.info  # single-sample fallback
+        # CrossCaller is an INFO flag (2+ unique callers across all cores)
+        any_cross_caller = "CrossCaller" in rec.info
 
         # clone record so filters can be added freely
         new = clone_record(rec, vcf_out.header)
+        if 'TIER' in new.info:
+            del new.info['TIER']
 
         # Decision tree (plan section 3g):
         # HighConf     — CrossTech is set OR (any core has CrossCaller AND CrossTissue is set)

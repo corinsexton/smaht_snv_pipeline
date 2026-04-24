@@ -670,17 +670,23 @@ class TieredVCF:
                         is_merged  = '-' in core or core == 'MAMC'
 
                         if is_merged:
-                            # Merged core: combined SR+PB if PB available, else SR-only fallback
+                            # Merged core: combined SR+PB if PB available, else SR-only fallback.
+                            # If the combined gate fails (e.g. pb_alt=0), fall back to SR-only.
                             pb_sc    = agg_counts['PB']
                             pb_total = pb_sc.REF_ADF + pb_sc.REF_ADR + pb_sc.ALT_ADF + pb_sc.ALT_ADR
                             pb_alt   = pb_sc.ALT_ADF + pb_sc.ALT_ADR
                             if pb_total > 0:
                                 thresholds = get_read_cutoffs(sr_total, pb_total)
-                                core_alt_support[core] = (
+                                combined_pass = (
                                     sr_total > 0
                                     and sr_alt >= thresholds["combined_SR"]
                                     and pb_alt >= thresholds["combined_PB"]
                                 )
+                                sr_only_pass = (
+                                    sr_total > 0
+                                    and sr_alt >= get_read_cutoffs(sr_total, 0)["SR"]
+                                )
+                                core_alt_support[core] = combined_pass or sr_only_pass
                             else:
                                 core_alt_support[core] = (
                                     sr_total > 0

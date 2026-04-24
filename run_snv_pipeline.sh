@@ -11,9 +11,9 @@
 
 nextflow run main.nf  -resume \
   --vep_config vep.ini \
-  --longread_csv samplesheets/p25_lr.csv \
-  --ont_csv samplesheets/p25_ont.csv \
-  --shortread_csv samplesheets/p25_sr.csv \
+  --longread_csv samplesheets_fixed/p25_lr.csv \
+  --ont_csv samplesheets_fixed/p25_ont.csv \
+  --shortread_csv samplesheets_fixed/p25_sr.csv \
   --input_metadata samplesheets/p25_metadata.csv \
-  --input_vcfs p25_vcfs_ss.csv \
-  --results_dir ./results_test
+  --input_vcfs p25_vcfs_ss2.csv \
+  --results_dir ./results_test3

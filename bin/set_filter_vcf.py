@@ -53,15 +53,10 @@ def fix_header(header):
     """
     new_header = header.copy()
 
-    filter_defs = [
-        ('HighConf',      'High confidence variant (CrossTech is set, or any core has CrossCaller and CrossTissue is set)'),
-        ('LowConf',       'Low confidence variant (any core has CrossCaller, or CrossTissue is set)'),
-        ('LikelyArtifact','Lowest confidence: no CrossTech, CrossCaller, or CrossTissue evidence'),
-    ]
+    if 'LowEvidence' not in new_header.filters:
+        new_header.add_line('##FILTER=<ID=LowEvidence,Description="No cross-evidence: lacks CrossTech, CrossCaller, CrossTissue, and CrossCore">')
 
-    for flt_id, flt_desc in filter_defs:
-        if flt_id not in new_header.filters:
-            new_header.add_line(f'##FILTER=<ID={flt_id},Description="{flt_desc}">')
+    new_header.add_line('##INFO=<ID=EvidenceScore,Number=1,Type=Integer,Description="Count of cross-evidence labels present (CrossTech, CrossCaller, CrossTissue, CrossCore)">')
 
     return new_header
 
@@ -71,7 +66,7 @@ def fix_header(header):
 ###############################################################################
 def main():
     parser = argparse.ArgumentParser(
-        description="Assign HighConf / LowConf / . FILTERs to variants"
+        description="Assign PASS / LowEvidence FILTERs and EvidenceScore to variants"
     )
     parser.add_argument(
         "-i", "--input", required=True,
@@ -114,31 +109,25 @@ def main():
     ###########################################################################
     for rec in vcf_in:
 
-        # Tissue-level INFO flags
         crossTech   = "CrossTech"   in rec.info
         crossTissue = "CrossTissue" in rec.info
+        crossCaller = "CrossCaller" in rec.info
+        crossCore   = "CrossCore"   in rec.info
 
-        # CrossCaller is an INFO flag (2+ unique callers across all cores)
-        any_cross_caller = "CrossCaller" in rec.info
+        evidence_score = sum([crossTech, crossTissue, crossCaller, crossCore])
 
         # clone record so filters can be added freely
         new = clone_record(rec, vcf_out.header)
         if 'TIER' in new.info:
             del new.info['TIER']
 
-        # Decision tree (plan section 3g):
-        # HighConf     — CrossTech is set OR (any core has CrossCaller AND CrossTissue is set)
-        # LowConf      — any core has CrossCaller OR CrossTissue is set
-        # LikelyArtifact — none of the above
+        new.info['EvidenceScore'] = evidence_score
 
         new.filter.clear()
-
-        if crossTech or (any_cross_caller and crossTissue):
-            new.filter.add("HighConf")
-        elif any_cross_caller or crossTissue:
-            new.filter.add("LowConf")
+        if evidence_score == 0:
+            new.filter.add("LowEvidence")
         else:
-            new.filter.add("LikelyArtifact")
+            new.filter.add("PASS")
 
         vcf_out.write(new)
 

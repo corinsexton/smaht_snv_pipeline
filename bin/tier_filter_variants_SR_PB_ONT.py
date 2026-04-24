@@ -650,19 +650,64 @@ class TieredVCF:
                     core_calls = parse_core_calls(core_calls_raw)
                     per_core   = self.minipileup_vcf.core_counts.get(key, {})
 
-                    # Per-core read cutoff gate: keep variant if any called core's ALT reads
-                    # meet the standalone read cutoff computed from that core's own coverage.
+                    # Per-core read support gate.
+                    # - Individual SR cores: per-core SR reads vs strict standalone cutoff (target_p=1e-5).
+                    # - Individual PB cores: combined SR+PB gate (tissue-level SR + per-core PB).
+                    # - Merged cores (hyphen in name) or MAMC: combined SR+PB gate using aggregate
+                    #   PB counts when PB is available; falls back to aggregate SR vs standalone
+                    #   cutoff when the donor has no PacBio data.
                     core_alt_support = {}  # core -> bool
+                    agg_counts = self.minipileup_vcf.aggregate_counts[key]
+                    agg_sr   = agg_counts['SR']
+                    sr_total = agg_sr.REF_ADF + agg_sr.REF_ADR + agg_sr.ALT_ADF + agg_sr.ALT_ADR
+                    sr_alt   = agg_sr.ALT_ADF + agg_sr.ALT_ADR
                     for core in cores:
                         if core not in core_calls:
                             core_alt_support[core] = False
                             continue
-                        cc = per_core.get(core, {'SR': SampleCounts(core), 'PB': SampleCounts(core)})
                         core_types = {ctype for _, ctype in core_cram_map.get(core, [])}
-                        sc = cc['SR'] if 'SR' in core_types else cc['PB']
-                        core_total = sc.REF_ADF + sc.REF_ADR + sc.ALT_ADF + sc.ALT_ADR
-                        core_alt   = sc.ALT_ADF + sc.ALT_ADR
-                        core_alt_support[core] = core_total > 0 and core_alt >= get_read_cutoffs(core_total, 0)["SR"]
+                        is_pb_core = 'PB' in core_types and 'SR' not in core_types
+                        is_merged  = '-' in core or core == 'MAMC'
+
+                        if is_merged:
+                            # Merged core: combined SR+PB if PB available, else SR-only fallback
+                            pb_sc    = agg_counts['PB']
+                            pb_total = pb_sc.REF_ADF + pb_sc.REF_ADR + pb_sc.ALT_ADF + pb_sc.ALT_ADR
+                            pb_alt   = pb_sc.ALT_ADF + pb_sc.ALT_ADR
+                            if pb_total > 0:
+                                thresholds = get_read_cutoffs(sr_total, pb_total)
+                                core_alt_support[core] = (
+                                    sr_total > 0
+                                    and sr_alt >= thresholds["combined_SR"]
+                                    and pb_alt >= thresholds["combined_PB"]
+                                )
+                            else:
+                                core_alt_support[core] = (
+                                    sr_total > 0
+                                    and sr_alt >= get_read_cutoffs(sr_total, 0)["SR"]
+                                )
+                        elif is_pb_core:
+                            # Individual PB core: tissue-level SR + per-core PB combined gate
+                            cc    = per_core.get(core, {'SR': SampleCounts(core), 'PB': SampleCounts(core)})
+                            pb_sc = cc['PB']
+                            pb_total = pb_sc.REF_ADF + pb_sc.REF_ADR + pb_sc.ALT_ADF + pb_sc.ALT_ADR
+                            pb_alt   = pb_sc.ALT_ADF + pb_sc.ALT_ADR
+                            thresholds = get_read_cutoffs(sr_total, pb_total)
+                            core_alt_support[core] = (
+                                sr_total > 0 and pb_total > 0
+                                and sr_alt >= thresholds["combined_SR"]
+                                and pb_alt >= thresholds["combined_PB"]
+                            )
+                        else:
+                            # Individual SR core: per-core SR vs standalone cutoff (unchanged)
+                            cc         = per_core.get(core, {'SR': SampleCounts(core), 'PB': SampleCounts(core)})
+                            sc         = cc['SR']
+                            core_total = sc.REF_ADF + sc.REF_ADR + sc.ALT_ADF + sc.ALT_ADR
+                            core_alt   = sc.ALT_ADF + sc.ALT_ADR
+                            core_alt_support[core] = (
+                                core_total > 0
+                                and core_alt >= get_read_cutoffs(core_total, 0)["SR"]
+                            )
 
                     if not any(core_alt_support.values()):
                         continue

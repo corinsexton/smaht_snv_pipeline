@@ -805,10 +805,10 @@ class TieredVCF:
                         sr = cc['SR']
                         pb = cc['PB']
 
-                        if called:
-                            gt = (0, 1) if core_alt_support.get(core, False) else (0, 0)
+                        if called and core_alt_support.get(core, False):
+                            gt = (0, 1)
                         else:
-                            gt = (None, None)
+                            gt = (0, 0)
                         new_rec.samples[core]['GT'] = gt
 
                         new_rec.samples[core]['SR_ADF'] = (sr.REF_ADF, sr.ALT_ADF)

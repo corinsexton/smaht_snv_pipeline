@@ -53,10 +53,14 @@ def fix_header(header):
     """
     new_header = header.copy()
 
+    if 'PASS' not in new_header.filters:
+        new_header.add_line('##FILTER=<ID=PASS,Description="At least one cross-evidence label present (CrossTech, CrossCaller, CrossTissue, or CrossCore)">')
+
     if 'LowEvidence' not in new_header.filters:
         new_header.add_line('##FILTER=<ID=LowEvidence,Description="No cross-evidence: lacks CrossTech, CrossCaller, CrossTissue, and CrossCore">')
 
-    new_header.add_line('##INFO=<ID=EvidenceScore,Number=1,Type=Integer,Description="Count of cross-evidence labels present (CrossTech, CrossCaller, CrossTissue, CrossCore)">')
+    if 'EvidenceScore' not in new_header.info:
+        new_header.add_line('##INFO=<ID=EvidenceScore,Number=1,Type=Integer,Description="Count of cross-evidence labels present (CrossTech, CrossCaller, CrossTissue, CrossCore)">')
 
     return new_header
 

@@ -912,7 +912,7 @@ class TieredVCF:
                     # Add flag for CrossTech (old Tier1 classification) and CrossCaller
                     if tier == 'TIER1':
                         record.info['CrossTech'] = True
-                    if len(callers_value) > 1:
+                    if callers_value and len(callers_value) > 1:
                         record.info['CrossCaller'] = True
 
                     if keep_info == False:

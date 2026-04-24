@@ -50,10 +50,10 @@ process run_minipileup_sr_only {
     tabix ${id}.final.vcf.gz
 
     # split by tiers
-    bcftools view -i 'FILTER="HighConf"' ${id}.final.vcf.gz -Oz -o ${id}.tier1.vcf.gz
+    bcftools view -f "PASS"        ${id}.final.vcf.gz -Oz -o ${id}.tier1.vcf.gz
     tabix ${id}.tier1.vcf.gz
 
-    bcftools view -i 'FILTER="LowConf"' ${id}.final.vcf.gz -Oz -o ${id}.tier2.vcf.gz
+    bcftools view -f "LowEvidence" ${id}.final.vcf.gz -Oz -o ${id}.tier2.vcf.gz
     tabix ${id}.tier2.vcf.gz
 
     # --- metrics (standard schema) ---

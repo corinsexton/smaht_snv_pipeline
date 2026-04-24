@@ -687,9 +687,8 @@ class TieredVCF:
                                     and sr_alt >= get_read_cutoffs(sr_total, 0)["SR"]
                                 )
                         elif is_pb_core:
-                            # Individual PB core: tissue-level SR + per-core PB combined gate
-                            cc    = per_core.get(core, {'SR': SampleCounts(core), 'PB': SampleCounts(core)})
-                            pb_sc = cc['PB']
+                            # Individual PB core: tissue-level SR + donor-level aggregate PB combined gate
+                            pb_sc    = agg_counts['PB']
                             pb_total = pb_sc.REF_ADF + pb_sc.REF_ADR + pb_sc.ALT_ADF + pb_sc.ALT_ADR
                             pb_alt   = pb_sc.ALT_ADF + pb_sc.ALT_ADR
                             thresholds = get_read_cutoffs(sr_total, pb_total)

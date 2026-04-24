@@ -691,12 +691,14 @@ class TieredVCF:
                             pb_sc    = agg_counts['PB']
                             pb_total = pb_sc.REF_ADF + pb_sc.REF_ADR + pb_sc.ALT_ADF + pb_sc.ALT_ADR
                             pb_alt   = pb_sc.ALT_ADF + pb_sc.ALT_ADR
-                            thresholds = get_read_cutoffs(sr_total, pb_total)
-                            core_alt_support[core] = (
-                                sr_total > 0 and pb_total > 0
-                                and sr_alt >= thresholds["combined_SR"]
-                                and pb_alt >= thresholds["combined_PB"]
-                            )
+                            if sr_total > 0 and pb_total > 0:
+                                thresholds = get_read_cutoffs(sr_total, pb_total)
+                                core_alt_support[core] = (
+                                    sr_alt >= thresholds["combined_SR"]
+                                    and pb_alt >= thresholds["combined_PB"]
+                                )
+                            else:
+                                core_alt_support[core] = False
                         else:
                             # Individual SR core: per-core SR vs standalone cutoff (unchanged)
                             cc         = per_core.get(core, {'SR': SampleCounts(core), 'PB': SampleCounts(core)})

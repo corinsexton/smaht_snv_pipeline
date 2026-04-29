@@ -10,7 +10,7 @@ include { split_tier1_tier2 } from './workflows/split_tier1_tier2.nf'
 include { phasing } from './workflows/phasing.nf'
 include { check_other_tissues } from './workflows/check_other_tissues.nf'
 
-params.genome_chunks   = "${projectDir}/conf/genome_chunks.txt"
+params.genome_chunks   = "${projectDir}/conf/genome_chunks_chr.txt"
 params.panel_of_errors ="/n/data1/hms/dbmi/park/corinne/smaht/test_benchmarking/smaht_snv_pipeline/panel_of_errors/PON.q20q20.05.5.fa.gz"
 params.results_dir     = "./new_results"
 params.ref             = "/n/data1/hms/dbmi/park-smaht_dac/ref/GRCh38_no_alt/hg38_no_alt.fa"
@@ -335,7 +335,7 @@ workflow {
 
     phasing_output = phasing(tier_split_output, germline_calls_ch, input_bams, ref_input, vep_config, regions_input, sex_ch)
 
-    check_other_tissues(phasing_output, ref_input, sr_by_donor, regions_input, file(params.genome_chunks))
+    check_other_tissues(phasing_output, ref_input, sr_by_donor, regions_input)
 
 }
 

@@ -1,7 +1,7 @@
 nextflow.enable.dsl=2
 
 
-include { run_minipileup_parallel } from '../modules/run_minipileup_parallel.nf'
+include { run_minipileup2_parallel } from '../modules/run_minipileup2_parallel.nf'
 include { tier_variants_binom } from '../modules/tier_variants_binom.nf'
 include { split_vcf } from '../modules/split_vcf.nf'
 include { merge_minipileup_chunks } from '../modules/merge_minipileup_chunks.nf' 
@@ -51,12 +51,12 @@ workflow split_tier1_tier2 {
                 sr_bams, sr_bais, lr_bams, lr_bais, lr_tissues, lr_ont_bams, lr_ont_bais, lr_ont_tissues) } 
         .set { vcf_chunk_metadata } 
 
-    // Step 3: Parallel minipileup on each chunk 
-    run_minipileup_parallel(vcf_chunk_metadata, ref_input) 
-    
-    // Step 4: Group all chunk outputs per id 
-    run_minipileup_parallel.out.vcf 
-        .groupTuple(size:52)
+    // Step 3: Parallel minipileup on each chunk
+    run_minipileup2_parallel(vcf_chunk_metadata, ref_input)
+
+    // Step 4: Group all chunk outputs per id
+    run_minipileup2_parallel.out.vcf
+        .groupTuple(size:24)
         .map { id, chunk_vcfs, chunk_tbis, truth_vcfs, truth_tbis, mp_vcfs, mp_tbis -> 
                 tuple( id, mp_vcfs, mp_tbis, truth_vcfs.unique(), truth_tbis.unique() ) } 
         .set { chunk_groups } 

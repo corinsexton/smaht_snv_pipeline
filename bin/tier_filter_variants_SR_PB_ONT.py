@@ -209,9 +209,11 @@ class MinipileupVCF:
         for i, alt in enumerate(record.alts):
             l_alt = len(alt)
             if l_ref == l_alt:
-                alt_no_N = alt.strip('N') 
+                alt_no_N = alt.strip('N')
                 # takes care of cases with TNN > ACN,ANN
                 if alt_no_N == ALT: return i
+                # takes care of real-base context padding (minipileup2 format, e.g. CG > TG)
+                if len(ALT) == 1 and alt[0] == ALT and alt[1:] == record.ref[1:]: return i
         return None
 
     def add_counts(self, record: pysam.VariantRecord, sample: str, ALT_index: int):
@@ -582,14 +584,15 @@ class TieredVCF:
 
         # FORMAT field definitions (per-core)
         format_defs = [
-            '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype: 0/1=called+passed all filters, 0/0=called+failed a filter, ./.=not called in this core">',
+            '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype: 0/1=called+passed all filters, 0/0=did not pass filtering">',
+            '##FORMAT=<ID=TECH,Number=1,Type=String,Description="Sequencing technology of this core: SR=short-read, PB=PacBio/long-read">',
             '##FORMAT=<ID=SR_ADF,Number=2,Type=Integer,Description="Per-core short-read forward depths (REF,ALT)">',
             '##FORMAT=<ID=SR_ADR,Number=2,Type=Integer,Description="Per-core short-read reverse depths (REF,ALT)">',
             '##FORMAT=<ID=PB_ADF,Number=2,Type=Integer,Description="Per-core tissue-matched PacBio forward depths (REF,ALT)">',
             '##FORMAT=<ID=PB_ADR,Number=2,Type=Integer,Description="Per-core tissue-matched PacBio reverse depths (REF,ALT)">',
             '##FORMAT=<ID=SR_VAF,Number=1,Type=Float,Description="Per-core short-read variant allele fraction">',
             '##FORMAT=<ID=PB_VAF,Number=1,Type=Float,Description="Per-core tissue-matched PacBio variant allele fraction">',
-            '##FORMAT=<ID=ALT_SUPPORT,Number=1,Type=Integer,Description="1 if this core\'s ALT reads meet the standalone read cutoff for its coverage, 0 otherwise">',
+            '##FORMAT=<ID=ALT_SUPPORT_PASS,Number=1,Type=Integer,Description="1 if this core\'s ALT reads meet the standalone read cutoff for its coverage, 0 otherwise">',
             '##FORMAT=<ID=CALLERS,Number=.,Type=String,Description="Callers that reported this variant for this core">',
         ]
 
@@ -598,12 +601,12 @@ class TieredVCF:
             '##INFO=<ID=CrossTech,Number=0,Type=Flag,Description="Alt supported in both short read and tissue-matched PacBio at or above combined thresholds">',
             '##INFO=<ID=CrossCore,Number=0,Type=Flag,Description="Variant has GT=0/1 in more than one core">',
             '##INFO=<ID=CrossCaller,Number=0,Type=Flag,Description="Alt found in 2+ unique callers across all cores">',
-            '##INFO=<ID=POOLED_PB_VAF,Number=1,Type=Float,Description="Tissue-matched PacBio VAF pooled across all cores">',
-            '##INFO=<ID=POOLED_ONT_VAF,Number=1,Type=Float,Description="Tissue-matched ONT VAF pooled across all cores">',
-            '##INFO=<ID=POOLED_PB_ADF,Number=2,Type=Integer,Description="Tissue-matched PacBio forward depths pooled across all cores (REF,ALT)">',
-            '##INFO=<ID=POOLED_PB_ADR,Number=2,Type=Integer,Description="Tissue-matched PacBio reverse depths pooled across all cores (REF,ALT)">',
-            '##INFO=<ID=POOLED_ONT_ADF,Number=2,Type=Integer,Description="Tissue-matched ONT forward depths pooled across all cores (REF,ALT)">',
-            '##INFO=<ID=POOLED_ONT_ADR,Number=2,Type=Integer,Description="Tissue-matched ONT reverse depths pooled across all cores (REF,ALT)">',
+            '##INFO=<ID=POOLED_PB_VAF,Number=1,Type=Float,Description="PacBio VAF pooled across all of a donor\'s tissues">',
+            '##INFO=<ID=POOLED_ONT_VAF,Number=1,Type=Float,Description="ONT VAF pooled across all of a donor\'s tissues">',
+            '##INFO=<ID=POOLED_PB_ADF,Number=2,Type=Integer,Description="PacBio forward depths pooled across all of a donor\'s tissues (REF,ALT)">',
+            '##INFO=<ID=POOLED_PB_ADR,Number=2,Type=Integer,Description="PacBio reverse depths pooled across all of a donor\'s tissues (REF,ALT)">',
+            '##INFO=<ID=POOLED_ONT_ADF,Number=2,Type=Integer,Description="ONT forward depths pooled across all of a donor\'s tissues (REF,ALT)">',
+            '##INFO=<ID=POOLED_ONT_ADR,Number=2,Type=Integer,Description="ONT reverse depths pooled across all of a donor\'s tissues (REF,ALT)">',
             '##INFO=<ID=REGION,Number=1,Type=String,Description="SMaHT region classification: easy, diff, or ext">',
             '##INFO=<ID=CORE_CALLS,Number=1,Type=String,Description="Per-core caller presence: core1:caller1,caller2|core2:caller1">',
             '##INFO=<ID=GERMLINE_PVAL,Number=1,Type=Float,Description="Min binomial p-value for germline deviation across pooled platforms (tissue-level SR; donor-level PB and ONT)">',
@@ -819,18 +822,30 @@ class TieredVCF:
                             gt = (0, 0)
                         new_rec.samples[core]['GT'] = gt
 
-                        new_rec.samples[core]['SR_ADF'] = (sr.REF_ADF, sr.ALT_ADF)
-                        new_rec.samples[core]['SR_ADR'] = (sr.REF_ADR, sr.ALT_ADR)
-                        new_rec.samples[core]['PB_ADF'] = (pb.REF_ADF, pb.ALT_ADF)
-                        new_rec.samples[core]['PB_ADR'] = (pb.REF_ADR, pb.ALT_ADR)
+                        core_types = {ctype for _, ctype in core_cram_map.get(core, [])}
+                        if core_types == {'ONT'}:
+                            raise ValueError(f"ONT-only core '{core}' is not supported; TECH must be SR or PB")
+                        tech = 'PB' if 'PB' in core_types else 'SR'
+                        new_rec.samples[core]['TECH'] = tech
 
-                        sr_total = sr.REF_ADF + sr.REF_ADR + sr.ALT_ADF + sr.ALT_ADR
-                        pb_total = pb.REF_ADF + pb.REF_ADR + pb.ALT_ADF + pb.ALT_ADR
+                        if tech == 'SR':
+                            new_rec.samples[core]['SR_ADF'] = (sr.REF_ADF, sr.ALT_ADF)
+                            new_rec.samples[core]['SR_ADR'] = (sr.REF_ADR, sr.ALT_ADR)
+                            new_rec.samples[core]['PB_ADF'] = (None, None)
+                            new_rec.samples[core]['PB_ADR'] = (None, None)
+                            sr_total = sr.REF_ADF + sr.REF_ADR + sr.ALT_ADF + sr.ALT_ADR
+                            new_rec.samples[core]['SR_VAF'] = float(sr.ALT_ADF + sr.ALT_ADR) / sr_total if sr_total > 0 else 0.0
+                            new_rec.samples[core]['PB_VAF'] = None
+                        else:
+                            new_rec.samples[core]['SR_ADF'] = (None, None)
+                            new_rec.samples[core]['SR_ADR'] = (None, None)
+                            new_rec.samples[core]['PB_ADF'] = (pb.REF_ADF, pb.ALT_ADF)
+                            new_rec.samples[core]['PB_ADR'] = (pb.REF_ADR, pb.ALT_ADR)
+                            new_rec.samples[core]['SR_VAF'] = None
+                            pb_total = pb.REF_ADF + pb.REF_ADR + pb.ALT_ADF + pb.ALT_ADR
+                            new_rec.samples[core]['PB_VAF'] = float(pb.ALT_ADF + pb.ALT_ADR) / pb_total if pb_total > 0 else 0.0
 
-                        new_rec.samples[core]['SR_VAF'] = float(sr.ALT_ADF + sr.ALT_ADR) / sr_total if sr_total > 0 else 0.0
-                        new_rec.samples[core]['PB_VAF'] = float(pb.ALT_ADF + pb.ALT_ADR) / pb_total if pb_total > 0 else 0.0
-
-                        new_rec.samples[core]['ALT_SUPPORT'] = 1 if core_alt_support.get(core, False) else 0
+                        new_rec.samples[core]['ALT_SUPPORT_PASS'] = 1 if core_alt_support.get(core, False) else 0
 
                         if called:
                             new_rec.samples[core]['CALLERS'] = core_calls[core]

@@ -1,19 +1,23 @@
 #!/bin/bash
 
 
-#SBATCH --job-name=nf_skin
+#SBATCH --job-name=nf_v2_ALL
 #SBATCH -A park_contrib
-#SBATCH --partition priopark
+#SBATCH --partition park
 #SBATCH --mem 5G
 #SBATCH -c 1
-#SBATCH -t 96:00:00
-#SBATCH -o logs/slurm-%x.%j.out
+#SBATCH -t 7-00:00:00
+#SBATCH -o logs/resume_NEW_v2-slurm-%x.%j.out
+##SBATCH --dependency=afterany:38303592
 
-nextflow run main.nf  -resume \
+nextflow run main.nf -resume \
   --vep_config vep.ini \
   --longread_csv samplesheets_fixed/p25_lr.csv \
   --ont_csv samplesheets_fixed/p25_ont.csv \
   --shortread_csv samplesheets_fixed/p25_sr.csv \
   --input_metadata samplesheets/p25_metadata.csv \
-  --input_vcfs p25_vcfs_ss_3AF.csv \
-  --results_dir ./results_skin_mp2
+  --input_vcfs samplesheets/p25_vcfs.csv \
+  --results_dir ./v2_p25_results_new
+
+
+  #--input_vcfs samplesheets/p25_vcfs.csv \

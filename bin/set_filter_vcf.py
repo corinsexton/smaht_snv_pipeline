@@ -21,6 +21,7 @@ INFO_DEFS = [
     '##INFO=<ID=CrossCaller,Number=0,Type=Flag,Description="Alt found in 2+ unique callers across all cores">',
     '##INFO=<ID=CrossCore,Number=0,Type=Flag,Description="Variant has GT=0/1 in more than one core">',
     '##INFO=<ID=CrossTech,Number=0,Type=Flag,Description="Alt supported in both short read and tissue-matched PacBio at or above combined thresholds">',
+    '##INFO=<ID=CrossTissue,Number=0,Type=Flag,Description="Variant has VAF > 0 in another tissue">',
     '##INFO=<ID=POOLED_PB_VAF,Number=1,Type=Float,Description="PacBio VAF pooled across all of a donor\'s tissues">',
     '##INFO=<ID=POOLED_ONT_VAF,Number=1,Type=Float,Description="ONT VAF pooled across all of a donor\'s tissues">',
     '##INFO=<ID=POOLED_PB_ADF,Number=2,Type=Integer,Description="PacBio forward depths pooled across all of a donor\'s tissues (REF,ALT)">',
@@ -28,13 +29,13 @@ INFO_DEFS = [
     '##INFO=<ID=POOLED_ONT_ADF,Number=2,Type=Integer,Description="ONT forward depths pooled across all of a donor\'s tissues (REF,ALT)">',
     '##INFO=<ID=POOLED_ONT_ADR,Number=2,Type=Integer,Description="ONT reverse depths pooled across all of a donor\'s tissues (REF,ALT)">',
     '##INFO=<ID=REGION,Number=1,Type=String,Description="SMaHT region classification: easy, diff, or ext">',
-    '##INFO=<ID=CORE_CALLS,Number=1,Type=String,Description="Per-core caller presence: core1:caller1,caller2|core2:caller1">',
     '##INFO=<ID=GERMLINE_PVAL,Number=1,Type=Float,Description="Min binomial p-value for germline deviation across pooled platforms (tissue-level SR; donor-level PB and ONT)">',
     '##INFO=<ID=GERMLINE_PVAL_SR,Number=1,Type=Float,Description="Binomial p-value for germline deviation in pooled SR data (tissue-level)">',
     '##INFO=<ID=GERMLINE_PVAL_PB,Number=1,Type=Float,Description="Binomial p-value for germline deviation in pooled PacBio data across all of a donor\'s tissues">',
     '##INFO=<ID=GERMLINE_PVAL_ONT,Number=1,Type=Float,Description="Binomial p-value for germline deviation in pooled ONT data across all of a donor\'s tissues">',
     '##INFO=<ID=SB_PVAL,Number=1,Type=Float,Description="Fisher exact test p-value for strand balance on pooled counts">',
     '##INFO=<ID=SB_SRC,Number=1,Type=String,Description="Platform used for pooled Fisher strand test: SR or PB">',
+    '##INFO=<ID=TISSUE_SR_VAFS,Number=.,Type=String,Description="VAFs for all tissues with short read nonzero VAF based on pileups, reads with BQ>30">',
 ]
 
 FILTER_DEFS = [

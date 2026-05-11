@@ -335,7 +335,7 @@ workflow {
 
     phasing_output = phasing(tier_split_output, germline_calls_ch, input_bams, ref_input, vep_config, regions_input, sex_ch)
 
-    check_other_tissues(phasing_output, ref_input, sr_by_donor, regions_input)
+    check_other_tissues(phasing_output, ref_input, sr_by_donor, regions_input, file(params.genome_chunks))
 
 }
 

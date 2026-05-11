@@ -8,7 +8,7 @@ process run_minipileup_sr_only {
     pattern: "${id}.final.*.tsv",
     mode:'copy'
 
-    cache false
+    cache true
 
     cpus 4
     memory '4G'

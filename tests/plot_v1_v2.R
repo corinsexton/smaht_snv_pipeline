@@ -114,7 +114,7 @@ p <- ggplot(df_long, aes(x = label, y = count, fill = category)) +
   theme(
     axis.text.x      = element_text(angle = 45, hjust = 1, size = 8),
     strip.background = element_rect(fill = "#e8e8e8"),
-    strip.text       = element_text(face = "bold"),
+    # strip.text       = element_text(face = "bold"),
     legend.position  = "top",
     panel.grid.major.x = element_blank()
   )

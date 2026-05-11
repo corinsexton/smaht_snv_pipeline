@@ -95,8 +95,8 @@ WORKDIR="$(mktemp -d minipileup2_work.XXXXXX)"
 trap 'rm -rf "$WORKDIR"' EXIT
 
 echo "Running minipileup2..."
-minipileup2 -f "$REFERENCE_FASTA" -x "$INPUT_VCF" \
-  -c -C -Q 20 -q 30 -s 0 \
+minipileup2 -t 2 -f "$REFERENCE_FASTA" -x "$INPUT_VCF" \
+  -D -c -C -Q 20 -q 30 -s 0 \
   "${ALL_CRAMS[@]}" > "$WORKDIR/merged.vcf" \
   || { echo "Error: minipileup2 failed"; exit 1; }
 

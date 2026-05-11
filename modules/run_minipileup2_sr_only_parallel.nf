@@ -2,7 +2,7 @@ process run_minipileup2_sr_only_parallel {
 
     cache 'lenient'
 
-    cpus 1
+    cpus 2
     memory '24G'
     time '4h'
 
@@ -19,9 +19,10 @@ process run_minipileup2_sr_only_parallel {
     output:
     tuple val(id),
           path(vcf), path(tbi), path(truth_vcf), path(truth_vcf_tbi),
-          path("${id}.minipileup_sr.vcf.gz"), path("${id}.minipileup_sr.vcf.gz.tbi"), emit: vcf
+          path("${id}.${vcf.simpleName}.minipileup_sr.vcf.gz"), path("${id}.${vcf.simpleName}.minipileup_sr.vcf.gz.tbi"), emit: vcf
 
     script:
+    def chunk = vcf.simpleName
     """
     # Build: --sr-cram <bam1> --sr-cram <bam2> ...
     sr_crams=""
@@ -42,12 +43,12 @@ process run_minipileup2_sr_only_parallel {
 
     n_variants=\$(bcftools view -H full.easyonly.vcf.gz | wc -l)
     if [[ \${n_variants} -eq 0 ]]; then
-        bcftools view -Oz -o ${id}.minipileup_sr.vcf.gz full.easyonly.vcf.gz
-        tabix ${id}.minipileup_sr.vcf.gz
+        bcftools view -Oz -o ${id}.${chunk}.minipileup_sr.vcf.gz full.easyonly.vcf.gz
+        tabix ${id}.${chunk}.minipileup_sr.vcf.gz
     else
         minipileup2-parallel_sr_only.sh -i full.easyonly.vcf.gz \
             -r ${ref} \
-            -o ${id}.minipileup_sr \
+            -o ${id}.${chunk}.minipileup_sr \
             \${sr_crams} \
             \${sr_tissue}
     fi

@@ -183,8 +183,6 @@ class MinipileupVCF:
 
         self.counts = dict()  # (chrom, pos, ref, alt) -> {sample: SampleCounts, ...}
         self.aggregate_counts = dict() # (chrom, pos, ref, alt) -> {PB: SampleCounts, SR: SampleCounts, ONT: SampleCounts}
-        self.tissue_pb_counts = dict()  # (chrom,pos,ref,alt) -> SampleCounts("PB_TISSUE")
-        self.tissue_ont_counts = dict()  # (chrom,pos,ref,alt) -> SampleCounts("ONT_TISSUE")
         self.core_counts = dict()  # (chrom,pos,ref,alt) -> {core: {SR: SampleCounts, PB: SampleCounts, ONT: SampleCounts}}
 
         self.load_records()
@@ -288,9 +286,6 @@ class MinipileupVCF:
                     ONT=SampleCounts("ONT")
             )
 
-            tissue_pb = SampleCounts("PB_TISSUE")
-            tissue_ont = SampleCounts("ONT_TISSUE")
-
             for sample, sc in counts_.items():
                 if sample.endswith("-SR"): group = "SR"
                 elif pb_pat.search(sample): group = "PB"
@@ -302,30 +297,7 @@ class MinipileupVCF:
                 agg[group].ALT_ADF += sc.ALT_ADF
                 agg[group].ALT_ADR += sc.ALT_ADR
 
-                # Additionally aggregate tissue-matched PB only
-                if (
-                    group == "PB"
-                    and self.current_tissue
-                    and sample.endswith(f"-PB-{self.current_tissue}")
-                ):
-                    tissue_pb.REF_ADF += sc.REF_ADF
-                    tissue_pb.REF_ADR += sc.REF_ADR
-                    tissue_pb.ALT_ADF += sc.ALT_ADF
-                    tissue_pb.ALT_ADR += sc.ALT_ADR
-
-                if (
-                    group == "ONT"
-                    and self.current_tissue
-                    and sample.endswith(f"-ONT-{self.current_tissue}")
-                ):
-                    tissue_ont.REF_ADF += sc.REF_ADF
-                    tissue_ont.REF_ADR += sc.REF_ADR
-                    tissue_ont.ALT_ADF += sc.ALT_ADF
-                    tissue_ont.ALT_ADR += sc.ALT_ADR
-
             self.aggregate_counts[key] = agg
-            self.tissue_pb_counts[key] = tissue_pb
-            self.tissue_ont_counts[key] = tissue_ont
 
     def compute_core_counts(self, core_cram_map: dict):
         """
@@ -341,6 +313,11 @@ class MinipileupVCF:
         Sample naming convention (set by minipileup-parallel.sh):
           SR → {cram_basename}-SR
           PB → {cram_basename}-PB-{tissue}  (tissue-matched)
+
+        Merged cores (hyphen in name, e.g. 001A2-001C3) are recomputed by summing
+        their constituent individual cores rather than from the CRAM map directly.
+        This is correct by definition and avoids bugs where the upstream pipeline
+        only passes one CRAM per constituent into the core_cram_map for merged cores.
         """
         for key, counts_ in self.counts.items():
             self.core_counts[key] = {}
@@ -365,6 +342,28 @@ class MinipileupVCF:
                         core_agg[grp].ALT_ADF += sc.ALT_ADF
                         core_agg[grp].ALT_ADR += sc.ALT_ADR
                 self.core_counts[key][core] = core_agg
+
+        # Recompute merged-core counts by summing constituent individual cores.
+        # A merged core is any core whose name contains a hyphen (e.g. 001A2-001C3).
+        # Constituent names are obtained by splitting on '-'.
+        # This overrides whatever was aggregated from the CRAM map above, which may
+        # be incomplete if the pipeline join only provided one CRAM per constituent.
+        merged_cores = [c for c in core_cram_map if '-' in c]
+        for core in merged_cores:
+            parts = core.split('-')
+            for key in self.core_counts:
+                merged_sr = SampleCounts(core + '-SR')
+                merged_pb = SampleCounts(core + '-PB')
+                for part in parts:
+                    part_cc = self.core_counts[key].get(part)
+                    if part_cc is None:
+                        continue
+                    for grp, merged in (('SR', merged_sr), ('PB', merged_pb)):
+                        merged.REF_ADF += part_cc[grp].REF_ADF
+                        merged.REF_ADR += part_cc[grp].REF_ADR
+                        merged.ALT_ADF += part_cc[grp].ALT_ADF
+                        merged.ALT_ADR += part_cc[grp].ALT_ADR
+                self.core_counts[key][core] = {'SR': merged_sr, 'PB': merged_pb}
 
 
 #*******************************************************************************
@@ -442,9 +441,7 @@ class TieredVCF:
             '##INFO=<ID=PB_ADF,Number=2,Type=Integer,Description="PacBio (long-read) forward depths (REF, ALT)">',
             '##INFO=<ID=PB_ADR,Number=2,Type=Integer,Description="PacBio (long-read) reverse depths (REF, ALT)">',
             '##INFO=<ID=ONT_ADF,Number=2,Type=Integer,Description="Oxford Nanopore (long-read) forward depths (REF, ALT)">',
-            '##INFO=<ID=ONT_ADR,Number=2,Type=Integer,Description="Oxford Nanopore (long-read) reverse depths (REF, ALT)">',
-            '##INFO=<ID=TISSUE_PB_VAF,Number=1,Type=Float,Description="PacBio VAF computed using only tissue-matched PB sample(s)">',
-            '##INFO=<ID=TISSUE_ONT_VAF,Number=1,Type=Float,Description="ONT VAF computed using only tissue-matched ONT sample(s)">'
+            '##INFO=<ID=ONT_ADR,Number=2,Type=Integer,Description="Oxford Nanopore (long-read) reverse depths (REF, ALT)">'
         ]
 
         self.filter_variants()
@@ -655,10 +652,11 @@ class TieredVCF:
 
                     # Per-core read support gate.
                     # - Individual SR cores: per-core SR reads vs strict standalone cutoff (target_p=1e-5).
-                    # - Individual PB cores: combined SR+PB gate (tissue-level SR + per-core PB).
+                    # - Individual PB cores: combined SR+PB gate; falls back to SR-only standalone
+                    #   cutoff when pb_alt=0 (e.g. LR caller found signal but pileup disagrees).
                     # - Merged cores (hyphen in name) or MAMC: combined SR+PB gate using aggregate
                     #   PB counts when PB is available; falls back to aggregate SR vs standalone
-                    #   cutoff when the donor has no PacBio data.
+                    #   cutoff when pb_alt=0 or the donor has no PacBio data.
                     core_alt_support = {}  # core -> bool
                     agg_counts = self.minipileup_vcf.aggregate_counts[key]
                     agg_sr   = agg_counts['SR']
@@ -696,18 +694,25 @@ class TieredVCF:
                                     and sr_alt >= get_read_cutoffs(sr_total, 0)["SR"]
                                 )
                         elif is_pb_core:
-                            # Individual PB core: tissue-level SR + donor-level aggregate PB combined gate
+                            # Individual PB core: combined SR+PB gate; falls back to SR-only
+                            # if pb_alt=0 (e.g. LR caller found signal but pileup shows no LR support).
                             pb_sc    = agg_counts['PB']
                             pb_total = pb_sc.REF_ADF + pb_sc.REF_ADR + pb_sc.ALT_ADF + pb_sc.ALT_ADR
                             pb_alt   = pb_sc.ALT_ADF + pb_sc.ALT_ADR
-                            if sr_total > 0 and pb_total > 0:
+                            sr_only_pass = (
+                                sr_total > 0
+                                and sr_alt >= get_read_cutoffs(sr_total, 0)["SR"]
+                            )
+                            if pb_total > 0:
                                 thresholds = get_read_cutoffs(sr_total, pb_total)
-                                core_alt_support[core] = (
-                                    sr_alt >= thresholds["combined_SR"]
+                                combined_pass = (
+                                    sr_total > 0
+                                    and sr_alt >= thresholds["combined_SR"]
                                     and pb_alt >= thresholds["combined_PB"]
                                 )
+                                core_alt_support[core] = combined_pass or sr_only_pass
                             else:
-                                core_alt_support[core] = False
+                                core_alt_support[core] = sr_only_pass
                         else:
                             # Individual SR core: per-core SR vs standalone cutoff (unchanged)
                             cc         = per_core.get(core, {'SR': SampleCounts(core), 'PB': SampleCounts(core)})
@@ -748,9 +753,9 @@ class TieredVCF:
                     except (ValueError, KeyError):
                         region_val = None
 
-                    # Tissue-level pooled counts (tissue-matched PB and ONT)
-                    tpb  = self.minipileup_vcf.tissue_pb_counts.get(key)  or SampleCounts("PB_TISSUE")
-                    tont = self.minipileup_vcf.tissue_ont_counts.get(key) or SampleCounts("ONT_TISSUE")
+                    # Donor-level pooled counts (all PB and ONT tissues for this donor)
+                    tpb  = agg_counts['PB']
+                    tont = agg_counts['ONT']
 
                     tpb_total  = tpb.REF_ADF  + tpb.REF_ADR  + tpb.ALT_ADF  + tpb.ALT_ADR
                     tont_total = tont.REF_ADF + tont.REF_ADR + tont.ALT_ADF + tont.ALT_ADR
@@ -768,7 +773,7 @@ class TieredVCF:
                         qual=orig_rec.qual,
                     )
 
-                    # Set tissue-level INFO fields
+                    # Set INFO fields
                     if tier == 'TIER1':
                         new_rec.info['CrossTech'] = True
                     if pooled_pb_vaf is not None:
@@ -849,6 +854,8 @@ class TieredVCF:
 
                         if called:
                             new_rec.samples[core]['CALLERS'] = core_calls[core]
+                        else:
+                            new_rec.samples[core]['CALLERS'] = ['.']
 
                     n_called_pass = sum(
                         1 for core in cores
@@ -949,25 +956,6 @@ class TieredVCF:
                     record.info["ONT_ADF"] = [agg["ONT"].REF_ADF, agg["ONT"].ALT_ADF]
                     record.info["ONT_ADR"] = [agg["ONT"].REF_ADR, agg["ONT"].ALT_ADR]
 
-                    # Add tissue-matched PB VAF if available
-                    tpb = self.minipileup_vcf.tissue_pb_counts.get(key)
-                    if tpb is not None:
-                        tpb_ref = tpb.REF_ADF + tpb.REF_ADR
-                        tpb_alt = tpb.ALT_ADF + tpb.ALT_ADR
-                        tpb_total = tpb_ref + tpb_alt
-                        if tpb_total > 0:
-                            record.info["TISSUE_PB_VAF"] = float(tpb_alt) / float(tpb_total)
-
-                    # Add tissue-matched ONT VAF if available
-                    tont = self.minipileup_vcf.tissue_ont_counts.get(key)
-                    if tont is not None:
-                        tont_ref = tont.REF_ADF + tont.REF_ADR
-                        tont_alt = tont.ALT_ADF + tont.ALT_ADR
-                        tont_total = tont_ref + tont_alt
-                        if tont_total > 0:
-                            record.info["TISSUE_ONT_VAF"] = float(tont_alt) / float(tont_total)
-
-
                     # Add Fisher test results to INFO fields
                     record.info["SB_PVAL"] = fisher_result.p_value
                     record.info["SB_SRC"] = fisher_result.group
@@ -1007,7 +995,7 @@ if __name__ == "__main__":
     parser.add_argument("-o", "--output_vcf", required=True, help="Output VCF with tiered and filtered variants. Compressed (.vcf.gz) or uncompressed (.vcf) VCF")
 
     parser.add_argument("--current_tissue", default=None,
-                    help="Tissue ID for this run (e.g. SMHT005-3AF). Used to compute TISSUE_PB_VAF from samples named *-PB-<current_tissue>.")
+                    help="Tissue ID for this run (e.g. SMHT005-3AF).")
     parser.add_argument("--core_cram_map", default=None,
                     help="TSV file mapping core -> CRAM basename -> type (SR/PB/ONT). When provided, writes a multi-sample VCF with one sample column per core.")
 

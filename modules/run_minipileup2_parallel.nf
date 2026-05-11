@@ -2,7 +2,7 @@ process run_minipileup2_parallel {
 
     cache 'lenient'
 
-    cpus 1
+    cpus 2
     memory '24G'
     time '2h'
 

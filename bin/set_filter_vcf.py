@@ -28,7 +28,6 @@ INFO_DEFS = [
     '##INFO=<ID=POOLED_PB_ADR,Number=2,Type=Integer,Description="PacBio reverse depths pooled across all of a donor\'s tissues (REF,ALT)">',
     '##INFO=<ID=POOLED_ONT_ADF,Number=2,Type=Integer,Description="ONT forward depths pooled across all of a donor\'s tissues (REF,ALT)">',
     '##INFO=<ID=POOLED_ONT_ADR,Number=2,Type=Integer,Description="ONT reverse depths pooled across all of a donor\'s tissues (REF,ALT)">',
-    '##INFO=<ID=REGION,Number=1,Type=String,Description="SMaHT region classification: easy, diff, or ext">',
     '##INFO=<ID=GERMLINE_PVAL,Number=1,Type=Float,Description="Min binomial p-value for germline deviation across pooled platforms (tissue-level SR; donor-level PB and ONT)">',
     '##INFO=<ID=GERMLINE_PVAL_SR,Number=1,Type=Float,Description="Binomial p-value for germline deviation in pooled SR data (tissue-level)">',
     '##INFO=<ID=GERMLINE_PVAL_PB,Number=1,Type=Float,Description="Binomial p-value for germline deviation in pooled PacBio data across all of a donor\'s tissues">',
@@ -37,6 +36,9 @@ INFO_DEFS = [
     '##INFO=<ID=SB_SRC,Number=1,Type=String,Description="Platform used for pooled Fisher strand test: SR or PB">',
     '##INFO=<ID=TISSUE_SR_VAFS,Number=.,Type=String,Description="VAFs for all tissues with short read nonzero VAF based on pileups, reads with BQ>30">',
 ]
+
+# '##INFO=<ID=REGION,Number=1,Type=String,Description="SMaHT region classification: easy, diff, or ext">',
+# removed because not in final vcf
 
 FILTER_DEFS = [
     '##FILTER=<ID=PASS,Description="At least one cross-evidence label present (CrossTech, CrossCaller, CrossTissue, or CrossCore)">',

@@ -230,9 +230,9 @@ for (chrom, pos, tissue), vafs in tissue_vafs.items():
         aggregated_vaf[(chrom, pos)][tissue] = mean_vaf
 
 ############################################################
-# 3. Build TISSUE_SR_VAFS and CrossTissue annotations
+# 3. Build SR_TISSUE_PRESENCE and CrossTissue annotations
 ############################################################
-summary = {}           # (chrom,pos) → "3A,0.05|3I,0.2"
+summary = {}           # (chrom,pos) → "3A|3I"
 crosstissue_flag = {}  # variants shared >1 tissue
 
 for key_pos, tissue_dict in aggregated_vaf.items():
@@ -262,9 +262,9 @@ orig = pysam.VariantFile(args.orig_vcf)
 # Only add INFO fields that are not already defined in the input header
 # (POOLED_PB_VAF and POOLED_ONT_VAF are written by tier_filter; adding
 # them again would produce a duplicate header error)
-if "TISSUE_SR_VAFS" not in orig.header.info:
-    orig.header.info.add("TISSUE_SR_VAFS", number=".", type="String",
-                         description="VAFs for all tissues with short read nonzero VAF based on pileups, reads with BQ>30")
+if "SR_TISSUE_PRESENCE" not in orig.header.info:
+    orig.header.info.add("SR_TISSUE_PRESENCE", number=".", type="String",
+                         description="Tissues from this donor with short-read support for this variant based on pileups (BQ>30)")
 if "CrossTissue" not in orig.header.info:
     orig.header.info.add("CrossTissue", number=0, type="Flag",
                          description="Variant has VAF > 0 in another tissue")
@@ -283,9 +283,9 @@ out = pysam.VariantFile(args.out, "w", header=orig.header)
 for rec in orig:
     key_pos = (rec.chrom, rec.pos)
 
-    # Add TISSUE_SR_VAFS if any
+    # Add SR_TISSUE_PRESENCE if any
     if key_pos in summary:
-        rec.info["TISSUE_SR_VAFS"] = summary[key_pos]
+        rec.info["SR_TISSUE_PRESENCE"] = summary[key_pos]
 
     # Add CrossTissue flag
     if key_pos in crosstissue_flag:

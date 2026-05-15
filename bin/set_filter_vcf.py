@@ -34,7 +34,7 @@ INFO_DEFS = [
     '##INFO=<ID=GERMLINE_PVAL_ONT,Number=1,Type=Float,Description="Binomial p-value for germline deviation in pooled ONT data across all of a donor\'s tissues">',
     '##INFO=<ID=SB_PVAL,Number=1,Type=Float,Description="Fisher exact test p-value for strand balance on pooled counts">',
     '##INFO=<ID=SB_SRC,Number=1,Type=String,Description="Platform used for pooled Fisher strand test: SR or PB">',
-    '##INFO=<ID=TISSUE_SR_VAFS,Number=.,Type=String,Description="VAFs for all tissues with short read nonzero VAF based on pileups, reads with BQ>30">',
+    '##INFO=<ID=SR_TISSUE_PRESENCE,Number=.,Type=String,Description="Tissues from this donor with short-read support for this variant based on pileups (BQ>30)">',
 ]
 
 # '##INFO=<ID=REGION,Number=1,Type=String,Description="SMaHT region classification: easy, diff, or ext">',

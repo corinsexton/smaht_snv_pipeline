@@ -124,7 +124,7 @@ sr_by_tissue
     }
     .set { sr_ids_by_donor }
 
-// ---------- LR: donor-level aggregate (pooled across all donor tissues) ----------
+// ---------- LR: donor-level aggregate (optional; map lookup handles missing donors) ----------
 input_lr
     .map { tissue, core, cram, crai ->
         def donor = tissue.tokenize('-')[0]
@@ -136,10 +136,21 @@ input_lr
     }
     .set { lr_donor_agg }
 
-// Project LR onto every SR tissue for that donor
+// Project LR onto every SR tissue for that donor (map lookup handles missing donors)
+lr_donor_map = lr_donor_agg
+    .map { donor, crams, crais, tissues ->
+        tuple(donor, tuple(crams, crais, tissues))
+    }
+    .toList()
+    .map { list -> list.collectEntries() }
+
 sr_ids_by_donor
-    .combine(lr_donor_agg, by: 0)
-    .map { donor, tissue, lr_crams, lr_crais, lr_tissues ->
+    .combine(lr_donor_map)
+    .map { donor, tissue, lr_map ->
+        def lr_data    = lr_map[donor]
+        def lr_crams   = lr_data ? lr_data[0] : []
+        def lr_crais   = lr_data ? lr_data[1] : []
+        def lr_tissues = lr_data ? lr_data[2] : []
         tuple(tissue, lr_crams, lr_crais, lr_tissues)
     }
     .set { lr_by_tissue }

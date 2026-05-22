@@ -857,9 +857,11 @@ class TieredVCF:
                         else:
                             new_rec.samples[core]['CALLERS'] = ['.']
 
+                    called_pass_cores = [c for c in cores if new_rec.samples[c]['GT'] == (0, 1)]
+                    any_pb_called = any(new_rec.samples[c]['TECH'] == 'PB' for c in called_pass_cores)
                     n_called_pass = sum(
-                        1 for core in cores
-                        if new_rec.samples[core]['GT'] == (0, 1)
+                        1 for c in called_pass_cores
+                        if not (('-' in c or c == 'MAMC') and new_rec.samples[c]['TECH'] == 'SR' and not any_pb_called)
                     )
                     if n_called_pass > 1:
                         new_rec.info['CrossCore'] = True

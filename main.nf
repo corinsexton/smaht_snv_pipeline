@@ -11,6 +11,8 @@ include { phasing } from './workflows/phasing.nf'
 include { check_other_tissues } from './workflows/check_other_tissues.nf'
 
 params.genome_chunks   = "${projectDir}/conf/genome_chunks_chr.txt"
+params.longread_csv    = null
+params.ont_csv         = null
 params.panel_of_errors ="/n/data1/hms/dbmi/park/corinne/smaht/test_benchmarking/smaht_snv_pipeline/panel_of_errors/PON.q20q20.05.5.fa.gz"
 params.results_dir     = "./new_results"
 params.ref             = "/n/data1/hms/dbmi/park-smaht_dac/ref/GRCh38_no_alt/hg38_no_alt.fa"
@@ -344,9 +346,13 @@ workflow {
 
     tier_split_output = split_tier1_tier2(vep_snvs_out.join(truth_ch), input_bams, ref_input, regions_input, file(params.genome_chunks), core_cram_map)
 
-    phasing_output = phasing(tier_split_output, germline_calls_ch, input_bams, ref_input, vep_config, regions_input, sex_ch)
+    def has_lr = params.longread_csv || params.ont_csv
 
-    check_other_tissues(phasing_output, ref_input, sr_by_donor, regions_input, file(params.genome_chunks))
+    def pipeline_output = has_lr
+        ? phasing(tier_split_output, germline_calls_ch, input_bams, ref_input, vep_config, regions_input, sex_ch)
+        : tier_split_output
+
+    check_other_tissues(pipeline_output, ref_input, sr_by_donor, regions_input, file(params.genome_chunks))
 
 }
 

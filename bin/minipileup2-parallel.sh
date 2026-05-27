@@ -53,7 +53,6 @@ done
 [[ -f "$REFERENCE_FASTA" ]]       || { echo "Error: $REFERENCE_FASTA not found"; exit 1; }
 [[ -f "${REFERENCE_FASTA}.fai" ]] || { echo "Error: ${REFERENCE_FASTA}.fai not found"; exit 1; }
 
-(( ${#LR_CRAMS[@]} > 0 )) || { echo "Error: at least one --lr-cram required"; exit 1; }
 (( ${#LR_CRAMS[@]} == ${#LR_TISSUES[@]} )) || { echo "Error: --lr-cram/--lr-tissue count mismatch"; exit 1; }
 (( ${#LR_CRAMS[@]} == ${#LR_TYPES[@]} ))   || { echo "Error: --lr-cram/--lr-type count mismatch"; exit 1; }
 
@@ -65,8 +64,6 @@ for i in "${!LR_CRAMS[@]}"; do
     *) echo "Error: invalid --lr-type '${LR_TYPES[$i]}' for '${LR_CRAMS[$i]}'. Expected PB or ONT."; exit 1;;
   esac
 done
-
-(( ${#PB_CRAMS[@]} > 0 )) || { echo "Error: at least one PB long-read (--lr-type PB) required"; exit 1; }
 
 ALL_CRAMS=("${SR_CRAMS[@]}" "${PB_CRAMS[@]}" "${ONT_CRAMS[@]}")
 (( ${#ALL_CRAMS[@]} > 0 )) || { echo "Error: no CRAM/BAM files provided"; exit 1; }

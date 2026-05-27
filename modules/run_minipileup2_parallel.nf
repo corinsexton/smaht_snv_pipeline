@@ -67,19 +67,12 @@ process run_minipileup2_parallel {
 
     chr=\$( basename -s .vcf.gz ${vcf})
 
-    if [[ \${#pb_cram_arr[@]} -eq 0 && \${#ont_cram_arr[@]} -eq 0 ]]; then
-        minipileup2-parallel_sr_only.sh -i ${vcf} \
-            -r ${ref} \
-            -o ${id}.\${chr}.minipileup \
-            \${sr_crams}
-    else
-        minipileup2-parallel.sh -i ${vcf} \
-            -r ${ref} \
-            -o ${id}.\${chr}.minipileup \
-            \${sr_crams} \
-            \${pb_lr_args} \
-            \${ont_lr_args}
-    fi
+    minipileup2-parallel.sh -i ${vcf} \
+        -r ${ref} \
+        -o ${id}.\${chr}.minipileup \
+        \${sr_crams} \
+        \${pb_lr_args} \
+        \${ont_lr_args}
 
     """
 }

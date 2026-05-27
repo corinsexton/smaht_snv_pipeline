@@ -10,7 +10,7 @@ include { split_tier1_tier2 } from './workflows/split_tier1_tier2.nf'
 include { phasing } from './workflows/phasing.nf'
 include { check_other_tissues } from './workflows/check_other_tissues.nf'
 
-params.genome_chunks   = "${projectDir}/conf/genome_chunks_chr.txt"
+params.genome_chunks   = "/n/data1/hms/dbmi/park/corinne/smaht/smahtSNV_v2_core_specific/smaht_snv_pipeline/conf/genome_chunks_chr.txt"
 params.longread_csv    = null
 params.ont_csv         = null
 params.panel_of_errors ="/n/data1/hms/dbmi/park/corinne/smaht/test_benchmarking/smaht_snv_pipeline/panel_of_errors/PON.q20q20.05.5.fa.gz"

@@ -350,12 +350,22 @@ class MinipileupVCF:
         # be incomplete if the pipeline join only provided one CRAM per constituent.
         merged_cores = [c for c in core_cram_map if '-' in c]
         for core in merged_cores:
+            # Determine technology of this merged core from its CRAM map entries so that
+            # shared-core constituents (stored as {part}_SR / {part}_PB) are looked up
+            # with the matching suffix only — prevents an SR merged core from picking up
+            # PB reads via a _PB fallback.
+            core_ctypes = {ctype for _, ctype in core_cram_map.get(core, [])}
             parts = core.split('-')
             for key in self.core_counts:
                 merged_sr = SampleCounts(core + '-SR')
                 merged_pb = SampleCounts(core + '-PB')
                 for part in parts:
                     part_cc = self.core_counts[key].get(part)
+                    if part_cc is None:
+                        if 'SR' in core_ctypes:
+                            part_cc = self.core_counts[key].get(part + '_SR')
+                        if part_cc is None and 'PB' in core_ctypes:
+                            part_cc = self.core_counts[key].get(part + '_PB')
                     if part_cc is None:
                         continue
                     for grp, merged in (('SR', merged_sr), ('PB', merged_pb)):
@@ -859,10 +869,20 @@ class TieredVCF:
 
                     called_pass_cores = [c for c in cores if new_rec.samples[c]['GT'] == (0, 1)]
                     any_pb_called = any(new_rec.samples[c]['TECH'] == 'PB' for c in called_pass_cores)
-                    n_called_pass = sum(
-                        1 for c in called_pass_cores
-                        if not (('-' in c or c == 'MAMC') and new_rec.samples[c]['TECH'] == 'SR' and not any_pb_called)
-                    )
+                    # Shared cores are split into {name}_SR / {name}_PB columns; collapse back
+                    # to base name so both count as one physical biopsy for CrossCore.
+                    def _base_core(c):
+                        return c[:-3] if (c.endswith('_SR') or c.endswith('_PB')) else c
+                    seen_bases = set()
+                    n_called_pass = 0
+                    for c in called_pass_cores:
+                        if (('-' in c or c == 'MAMC') and
+                                new_rec.samples[c]['TECH'] == 'SR' and not any_pb_called):
+                            continue
+                        b = _base_core(c)
+                        if b not in seen_bases:
+                            seen_bases.add(b)
+                            n_called_pass += 1
                     if n_called_pass > 1:
                         new_rec.info['CrossCore'] = True
 

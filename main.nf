@@ -92,6 +92,39 @@ def input_sr  = parse_cram_csv(params.shortread_csv)
 def input_lr  = params.longread_csv ? parse_cram_csv(params.longread_csv)        : Channel.empty()
 def input_ont = params.ont_csv      ? parse_pooled_cram_csv(params.ont_csv)      : Channel.empty()
 
+// LR caller names — used to distinguish SR callers from LR callers in the VCF samplesheet.
+// Shared cores (same core name in both SR and LR CRAM samplesheets) are split into
+// {core}_SR columns (SR callers) and {core}_PB columns (LR callers) to prevent mixed evidence.
+def LR_CALLER_SET = (params.containsKey('lr_callers')
+    ? params.lr_callers.tokenize(',')
+    : ['longcallD']) as Set
+
+// Compute shared-core and merged-core sets synchronously from samplesheet files.
+// Using direct file I/O avoids Nextflow channel-spread issues with emitted Sets.
+def _csv_tissue_cores = { path ->
+    file(path).readLines().drop(1).findAll { it.trim() }
+        .collect { line -> def p = line.split(',', -1); "${p[0].trim()}::${p[1].trim()}" }
+        .toSet()
+}
+// SHARED_CORES: (tissue, core) pairs present in BOTH SR and LR CRAM samplesheets.
+def SHARED_CORES = _csv_tissue_cores(params.shortread_csv)
+    .intersect(params.longread_csv ? _csv_tissue_cores(params.longread_csv) : ([] as Set))
+
+// MERGED_SR_CORES / MERGED_PB_CORES: hyphenated cores from VCF samplesheet, by caller type.
+// A merged core is always SR-only or PB-only — never both.
+def _vcf_rows = file(params.input_vcfs).readLines().drop(1).findAll { it.trim() }
+def MERGED_SR_CORES = _vcf_rows
+    .findAll { line -> def p = line.split(',', -1); p.size() > 3 && p[1].trim().contains('-') && !LR_CALLER_SET.contains(p[3].trim()) }
+    .collect { line -> def p = line.split(',', -1); "${p[0].trim()}::${p[1].trim()}" }
+    .toSet()
+def MERGED_PB_CORES = _vcf_rows
+    .findAll { line -> def p = line.split(',', -1); p.size() > 3 && p[1].trim().contains('-') && LR_CALLER_SET.contains(p[3].trim()) }
+    .collect { line -> def p = line.split(',', -1); "${p[0].trim()}::${p[1].trim()}" }
+    .toSet()
+
+log.info "Shared cores (split into _SR/_PB): ${SHARED_CORES.size()} — ${SHARED_CORES.sort().join(', ')}"
+log.info "Merged SR cores: ${MERGED_SR_CORES.size()}  Merged PB cores: ${MERGED_PB_CORES.size()}"
+
 // ---------- SR: tissue-level pool (all cores pooled, for minipileup) ----------
 input_sr
     .map { tissue, core, cram, crai -> tuple(tissue, cram, crai) }
@@ -202,13 +235,15 @@ def input_bams = sr_by_tissue
 def cram_map_sr = input_sr
     .map { tissue, core, cram, crai ->
         def basename = cram.name.replaceAll(/\.(cram|bam)$/, '')
-        ["${tissue}.core_cram_map.tsv", "${core}\t${basename}\tSR\n"]
+        def mapped_core = SHARED_CORES.contains("${tissue}::${core}") ? "${core}_SR" : core
+        ["${tissue}.core_cram_map.tsv", "${mapped_core}\t${basename}\tSR\n"]
     }
 
 def cram_map_lr = params.longread_csv ? input_lr
     .map { tissue, core, cram, crai ->
         def basename = cram.name.replaceAll(/\.(cram|bam)$/, '')
-        ["${tissue}.core_cram_map.tsv", "${core}\t${basename}\tPB\n"]
+        def mapped_core = SHARED_CORES.contains("${tissue}::${core}") ? "${core}_PB" : core
+        ["${tissue}.core_cram_map.tsv", "${mapped_core}\t${basename}\tPB\n"]
     } : Channel.empty()
 
 // ONT has no core — not added to core_cram_map (pooled annotation only)
@@ -238,7 +273,10 @@ def mergedCoreExpansions = {
         }
 }
 
+// MERGED_SR_CORES and MERGED_PB_CORES are plain Sets computed synchronously above.
+// Restrict expansion to the correct technology — no .combine() needed.
 def cram_map_sr_merged = mergedCoreExpansions()
+    .filter { key, merged_core -> MERGED_SR_CORES.contains("${key[0]}::${merged_core}") }
     .join(input_sr.map { tissue, core, cram, crai -> tuple([tissue, core], cram) })
     .map { key, merged_core, cram ->
         def basename = cram.name.replaceAll(/\.(cram|bam)$/, '')
@@ -246,6 +284,7 @@ def cram_map_sr_merged = mergedCoreExpansions()
     }
 
 def cram_map_lr_merged = params.longread_csv ? mergedCoreExpansions()
+    .filter { key, merged_core -> MERGED_PB_CORES.contains("${key[0]}::${merged_core}") }
     .join(input_lr.map { tissue, core, cram, crai -> tuple([tissue, core], cram) })
     .map { key, merged_core, cram ->
         def basename = cram.name.replaceAll(/\.(cram|bam)$/, '')
@@ -265,18 +304,20 @@ cram_map_sr.mix(cram_map_lr)
 
 // ---------- VCF samplesheet ----------
 // New format: tissue,core,gcc,caller,caller_vcf (header-based)
+// Shared cores (present in both SR and LR CRAM samplesheets) are renamed:
+//   SR callers → {core}_SR,  LR callers → {core}_PB
 def input_vcfs = Channel
     .fromPath(params.input_vcfs)
     .splitCsv(header: true)
     .map { row ->
-        tuple(
-            row.tissue.trim(),
-            row.core.trim(),
-            row.gcc.trim(),
-            row.caller.trim(),
-            file(row.caller_vcf.trim()),
-            file(row.caller_vcf.trim() + '.tbi')
-        )
+        def tissue   = row.tissue.trim()
+        def raw_core = row.core.trim()
+        def caller   = row.caller.trim()
+        def core = SHARED_CORES.contains("${tissue}::${raw_core}")
+            ? (LR_CALLER_SET.contains(caller) ? "${raw_core}_PB" : "${raw_core}_SR")
+            : raw_core
+        tuple(tissue, core, row.gcc.trim(), caller,
+              file(row.caller_vcf.trim()), file(row.caller_vcf.trim() + '.tbi'))
     }
 
 def truth_ch = Channel

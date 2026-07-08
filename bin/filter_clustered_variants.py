@@ -8,6 +8,11 @@ def _get_cores(rec):
     val = rec.info.get("CORE_CALLS")
     if not val:
         return set()
+    # pysam reads Number=1 String fields containing commas as a tuple
+    # (e.g. multi-caller cores "RUFUS,Strelka2"); rejoin to reconstruct
+    # the original string before parsing.
+    if isinstance(val, (tuple, list)):
+        val = ",".join(str(v) for v in val)
     cores = set()
     for entry in str(val).split("|"):
         if ":" in entry:
